@@ -1,6 +1,11 @@
 package wdl;
 
+import io.netty.buffer.ByteBuf;
+
 import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
@@ -19,7 +24,6 @@ import net.minecraft.network.play.server.SPacketChat;
 import net.minecraft.network.play.server.SPacketCustomPayload;
 import net.minecraft.network.play.server.SPacketMaps;
 import net.minecraft.profiler.Profiler;
-import net.minecraft.crash.ICrashReportDetail;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.storage.MapData;
@@ -42,6 +46,7 @@ import com.google.common.collect.ImmutableList;
  */
 public class WDLHooks {
 	private static final Profiler profiler = Minecraft.getMinecraft().mcProfiler;
+	private static final Logger logger = LogManager.getLogger();
 	
 	/**
 	 * Called when {@link WorldClient#tick()} is called.
@@ -163,6 +168,8 @@ public class WDLHooks {
 				profiler.endSection();  // "Core"
 				
 				profiler.endSection();  // "onChunkNoLongerNeeded"
+			} else {
+				logger.debug("Adding new empty chunk at " + x + ", " + z + " (already has: " + (sender.getChunkProvider().getLoadedChunk(x, z) != null) + ")");
 			}
 			
 			profiler.endSection();
@@ -203,7 +210,7 @@ public class WDLHooks {
 	 * Called when {@link NetHandlerPlayClient#handleChat(SPacketChat)} is
 	 * called.
 	 * <br/>
-	 * Should be at the start of the method.
+	 * Should be at the end of the method.
 	 */
 	public static void onNHPCHandleChat(NetHandlerPlayClient sender,
 			SPacketChat packet) {
@@ -240,7 +247,7 @@ public class WDLHooks {
 	 * Called when {@link NetHandlerPlayClient#handleMaps(SPacketMaps)} is
 	 * called.
 	 * <br/>
-	 * Should be at the start of the method.
+	 * Should be at the end of the method.
 	 */
 	public static void onNHPCHandleMaps(NetHandlerPlayClient sender,
 			SPacketMaps packet) {
@@ -272,7 +279,7 @@ public class WDLHooks {
 	 * {@link NetHandlerPlayClient#handleCustomPayload(SPacketCustomPayload)}
 	 * is called.
 	 * <br/>
-	 * Should be at the start of the method.
+	 * Should be at the end of the method.
 	 */
 	public static void onNHPCHandleCustomPayload(NetHandlerPlayClient sender,
 			SPacketCustomPayload packet) {
@@ -283,10 +290,15 @@ public class WDLHooks {
 			if (!packet.getBufferData().isReadable()) {
 				return;
 			}
-			String channel = packet.getChannelName();
-			byte[] payload = packet.getBufferData().array();
-			
 			profiler.startSection("wdl.onPluginMessage");
+
+			profiler.startSection("Parse");
+			String channel = packet.getChannelName();
+			ByteBuf buf = packet.getBufferData();
+			byte[] payload = new byte[buf.readableBytes()];
+			buf.readBytes(payload);
+			profiler.endSection();  // "Parse"
+
 			profiler.startSection("Core");
 			WDLEvents.onPluginChannelPacket(channel, payload);
 			profiler.endSection();  // "Core"
@@ -311,7 +323,7 @@ public class WDLHooks {
 	 * {@link NetHandlerPlayClient#handleBlockAction(SPacketBlockAction)} is
 	 * called.
 	 * <br/>
-	 * Should be at the start of the method.
+	 * Should be at the end of the method.
 	 */
 	public static void onNHPCHandleBlockAction(NetHandlerPlayClient sender,
 			SPacketBlockAction packet) {
@@ -383,7 +395,7 @@ public class WDLHooks {
 			GuiButton btn = (GuiButton) obj;
 	
 			if (btn.id == 5) { // Button "Achievements"
-				insertAtYPos = btn.yPosition + 24;
+				insertAtYPos = btn.y + 24;
 				break;
 			}
 		}
@@ -392,8 +404,8 @@ public class WDLHooks {
 		for (Object obj : buttonList) {
 			GuiButton btn = (GuiButton) obj;
 	
-			if (btn.yPosition >= insertAtYPos) {
-				btn.yPosition += 24;
+			if (btn.y >= insertAtYPos) {
+				btn.y += 24;
 			}
 		}
 	

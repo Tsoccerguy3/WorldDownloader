@@ -8,12 +8,14 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.gui.GuiScreen;
@@ -40,10 +42,13 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.MinecraftException;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.EmptyChunk;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import net.minecraft.world.chunk.storage.IChunkLoader;
 import net.minecraft.world.storage.MapData;
 import net.minecraft.world.storage.SaveHandler;
 import net.minecraft.world.storage.ThreadedFileIOBase;
+import net.minecraft.world.storage.WorldInfo;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -266,11 +271,6 @@ public class WDL {
 		
 		// Whether the 1-time tutorial has been shown.
 		defaultProps.setProperty("TutorialShown", "false");
-		
-		// Updates
-		defaultProps.setProperty("UpdateMinecraftVersion", "server");
-		//XXX change this based off of whether the current build is beta or not
-		defaultProps.setProperty("UpdateAllowBetas", "true");
 		
 		globalProps = new Properties(defaultProps);
 		FileReader reader = null;
@@ -775,11 +775,15 @@ public class WDL {
 		// This is needed because single player uses that data.
 		NBTTagCompound worldInfoNBT = worldClient.getWorldInfo()
 				.cloneNBTCompound(playerInfoNBT);
-		
+
+		// There's a root tag that stores the above one.
+		NBTTagCompound rootWorldInfoNBT = new NBTTagCompound();
+		rootWorldInfoNBT.setTag("Data", worldInfoNBT);
+
 		progressScreen.setMinorTaskProgress(
 				I18n.format("wdl.saveProgress.worldMetadata.editingNBT"), 2);
-		applyOverridesToWorldInfo(worldInfoNBT);
-		
+		applyOverridesToWorldInfo(worldInfoNBT, rootWorldInfoNBT);
+
 		int taskNum = 3;
 		for (ModInfo<IWorldInfoEditor> info : WDLApi
 				.getImplementingExtensions(IWorldInfoEditor.class)) {
@@ -796,8 +800,6 @@ public class WDL {
 		progressScreen.setMinorTaskProgress(
 				I18n.format("wdl.saveProgress.worldMetadata.writingNBT"), taskNum);
 		File saveDirectory = saveHandler.getWorldDirectory();
-		NBTTagCompound dataNBT = new NBTTagCompound();
-		dataNBT.setTag("Data", worldInfoNBT);
 		
 		worldProps.setProperty("LastSaved",
 				Long.toString(worldInfoNBT.getLong("LastPlayed")));
@@ -809,7 +811,7 @@ public class WDL {
 			File dataFileOld = new File(saveDirectory, "level.dat");
 			stream = new FileOutputStream(dataFile);
 			
-			CompressedStreamTools.writeCompressed(dataNBT, stream);
+			CompressedStreamTools.writeCompressed(rootWorldInfoNBT, stream);
 
 			if (dataFileBackup.exists()) {
 				dataFileBackup.delete();
@@ -861,7 +863,7 @@ public class WDL {
 		// Get the list of loaded chunks
 		@SuppressWarnings("unchecked")
 		Long2ObjectMap<Chunk> chunkMap = (Long2ObjectMap<Chunk>) ReflectionUtils
-				.stealAndGetField(chunkProvider, Long2ObjectMap.class);
+				.findAndGetPrivateField(chunkProvider, Long2ObjectMap.class);
 		List<Chunk> chunks = new ArrayList<Chunk>(chunkMap.values());
 		
 		progressScreen.startMajorTask(I18n.format("wdl.saveProgress.chunk.title"), 
@@ -876,8 +878,8 @@ public class WDL {
 				}
 				
 				progressScreen.setMinorTaskProgress(I18n.format(
-						"wdl.saveProgress.chunk.saving", c.xPosition,
-						c.zPosition), currentChunk);
+						"wdl.saveProgress.chunk.saving", c.x,
+						c.z), currentChunk);
 				
 				saveChunk(c);
 			}
@@ -893,17 +895,54 @@ public class WDL {
 		if (!WDLPluginChannels.canDownloadAtAll()) { return; }
 		
 		if (!WDLPluginChannels.canSaveChunk(c)) { return; }
-		
-		c.setTerrainPopulated(true);
 
 		try {
+			if (isEmpty(c)) {
+				logger.warn("[WDL] Tried to save empty chunk! (" + c + "@" + c.x + "," + c.z + ")");
+				return;
+			}
 			chunkLoader.saveChunk(worldClient, c);
 		} catch (Exception e) {
 			// Better tell the player that something didn't work:
 			WDLMessages.chatMessageTranslated(WDLMessageTypes.ERROR,
 					"wdl.messages.generalError.failedToSaveChunk",
-					c.xPosition, c.zPosition, e);
+					c.x, c.z, e);
 		}
+	}
+
+	private static boolean isEmpty(Chunk c) {
+		if (c.isEmpty() || c instanceof EmptyChunk) {
+			return true;
+		}
+		ExtendedBlockStorage[] array = c.getBlockStorageArray();
+		for (int i = 1; i < array.length; i++) {
+			if (array[i] != Chunk.NULL_BLOCK_STORAGE) {
+				return false;
+			}
+		}
+		if (array[0] != Chunk.NULL_BLOCK_STORAGE) {
+			// All-air empty chunks sometimes are sent with a bottom section;
+			// handle that and a few other special cases.
+			for (int y = 0; y < 16; y++) {
+				for (int z = 0; z < 16; z++) {
+					for (int x = 0; x < 16; x++) {
+						int id = Block.getStateId(array[0].get(x, y, z));
+						// Convert to standard global palette form
+						id = (id & 0xFFF) << 4 | (id & 0xF000) >> 12;
+						if ((id > 0x00F) && (id < 0x1A0 || id > 0x1AF)) {
+							// Contains a non-airoid; stop
+							return false;
+						}
+					}
+				}
+			}
+			// Only composed of airoids; treat as empty
+			logger.warn("[WDL] Skipping airoid empty chunk at " + c.x + ", " + c.z);
+		} else {
+			// Definitely empty
+			logger.warn("[WDL] Skipping chunk with all null sections at " + c.x + ", " + c.z);
+		}
+		return true;
 	}
 
 	/**
@@ -1101,8 +1140,11 @@ public class WDL {
 	/**
 	 * Change world and generator specific fields according to the overrides
 	 * found in the properties file.
+	 *
+	 * @param worldInfoNBT The main world info, generated by {@link WorldInfo#cloneNBTCompound}.
+	 * @param rootWorldInfoNBT The root tag containing worldInfoNBT as "<code>Data</code>"
 	 */
-	public static void applyOverridesToWorldInfo(NBTTagCompound worldInfoNBT) {
+	public static void applyOverridesToWorldInfo(NBTTagCompound worldInfoNBT, NBTTagCompound rootWorldInfoNBT) {
 		// LevelName
 		String baseName = baseProps.getProperty("ServerName");
 		String worldName = worldProps.getProperty("WorldName");
@@ -1212,6 +1254,47 @@ public class WDL {
 			worldInfoNBT.setInteger("SpawnY", y);
 			worldInfoNBT.setInteger("SpawnZ", z);
 			worldInfoNBT.setBoolean("initialized", true);
+		}
+
+		// Gamerules (most of these are already populated)
+		NBTTagCompound gamerules = worldInfoNBT.getCompoundTag("GameRules");
+		for (String prop : worldProps.stringPropertyNames()) {
+			if (!prop.startsWith("GameRule.")) {
+				continue;
+			}
+			String rule = prop.substring("GameRule.".length());
+			gamerules.setString(rule, worldProps.getProperty(prop));
+		}
+
+		// Forge (TODO: move this elsewhere!)
+		try {
+			logger.debug("Trying to call FML writeVersionData");
+			NBTTagCompound versionInfo = worldInfoNBT.getCompoundTag("Version");
+
+			Class<?> fmlCommonHandler = Class.forName("net.minecraftforge.fml.common.FMLCommonHandler");
+			Object instance = fmlCommonHandler.getMethod("instance").invoke(null);
+			Object dataFixer = fmlCommonHandler.getMethod("getDataFixer").invoke(instance);
+			Method writeVersionData = dataFixer.getClass()
+					.getMethod("writeVersionData", NBTTagCompound.class);
+			writeVersionData.invoke(dataFixer, versionInfo);
+
+			logger.debug("Called FML writeVersionData");
+		} catch (Throwable ex) {
+			logger.info("Failed to call FML writeVersionData", ex);
+		}
+
+		try {
+			logger.debug("Trying to call FML handleWorldDataSave");
+
+			Class<?> fmlCommonHandler = Class.forName("net.minecraftforge.fml.common.FMLCommonHandler");
+			Object instance = fmlCommonHandler.getMethod("instance").invoke(null);
+			Method handleWorldDataSave = fmlCommonHandler.getMethod("handleWorldDataSave",
+					SaveHandler.class, WorldInfo.class, NBTTagCompound.class);
+			handleWorldDataSave.invoke(instance, WDL.saveHandler, WDL.worldClient.getWorldInfo(), rootWorldInfoNBT);
+
+			logger.debug("Called FML handleWorldDataSave!  Keys are now " + rootWorldInfoNBT.getKeySet());
+		} catch (Throwable ex) {
+			logger.info("Failed to call FML handleWorldDataSave", ex);
 		}
 	}
 	
@@ -1413,7 +1496,7 @@ public class WDL {
 		core.addCrashSection("Expected version", VersionConstants.getExpectedVersion());
 		core.addCrashSection("Protocol version", VersionConstants.getProtocolVersion());
 		core.addCrashSection("Data version", VersionConstants.getDataVersion());
-		core.setDetail("File location", new ICrashReportDetail<String>() {
+		core.addDetail("File location", new ICrashReportDetail<String>() {
 			@Override
 			public String call() throws Exception {
 				//http://stackoverflow.com/q/320542/3991344
@@ -1540,10 +1623,10 @@ public class WDL {
 				//Steal crashReportSections, and replace it.
 				@SuppressWarnings("unchecked")
 				List<CrashReportCategory> crashReportSectionsOld = ReflectionUtils
-						.stealAndGetField(oldReport, List.class);
+						.findAndGetPrivateField(oldReport, List.class);
 				@SuppressWarnings("unchecked")
 				List<CrashReportCategory> crashReportSectionsNew = ReflectionUtils
-						.stealAndGetField(report, List.class);
+						.findAndGetPrivateField(report, List.class);
 				
 				crashReportSectionsNew.addAll(crashReportSectionsOld);
 			} catch (Exception e) {

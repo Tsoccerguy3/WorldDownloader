@@ -20,6 +20,8 @@ import net.minecraft.block.BlockDropper;
 import net.minecraft.block.BlockFurnace;
 import net.minecraft.block.BlockHopper;
 import net.minecraft.block.BlockNote;
+import net.minecraft.block.BlockTripWire;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -154,11 +156,11 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 		NBTTagCompound compound = new NBTTagCompound();
 
 		compound.setByte("V", (byte) 1);
-		compound.setInteger("xPos", chunk.xPosition);
-		compound.setInteger("zPos", chunk.zPosition);
+		compound.setInteger("xPos", chunk.x);
+		compound.setInteger("zPos", chunk.z);
 		compound.setLong("LastUpdate", world.getTotalWorldTime());
 		compound.setIntArray("HeightMap", chunk.getHeightMap());
-		compound.setBoolean("TerrainPopulated", chunk.isTerrainPopulated());
+		compound.setBoolean("TerrainPopulated", true);  // We always want this
 		compound.setBoolean("LightPopulated", chunk.isLightPopulated());
 		compound.setLong("InhabitedTime", chunk.getInhabitedTime());
 		ExtendedBlockStorage[] blockStorageArray = chunk.getBlockStorageArray();
@@ -181,18 +183,18 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 					blockData.setByteArray("Add", nibblearray1.getData());
 				}
 
-				NibbleArray blocklightArray = blockStorage.getBlocklightArray();
+				NibbleArray blocklightArray = blockStorage.getBlockLight();
 				int lightArrayLen = blocklightArray.getData().length;
 				blockData.setByteArray("BlockLight", blocklightArray.getData());
 
 				if (hasSky) {
-					NibbleArray skylightArray = blockStorage.getSkylightArray();
+					NibbleArray skylightArray = blockStorage.getSkyLight();
 					if (skylightArray != null) {
 						blockData.setByteArray("SkyLight", skylightArray.getData());
 					} else {
 						// Shouldn't happen, but if it does, handle it smoothly.
 						logger.error("[WDL] Skylight array for chunk at " +
-								chunk.xPosition + ", " + chunk.zPosition +
+								chunk.x + ", " + chunk.z +
 								" is null despite VersionedProperties " +
 								"saying it shouldn't be!");
 						blockData.setByteArray("SkyLight", new byte[lightArrayLen]);
@@ -304,7 +306,7 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 				WDLMessages.chatMessageTranslated(
 						WDLMessageTypes.ERROR,
 						"wdl.messages.generalError.failedToSaveEntity",
-						entity, chunk.xPosition, chunk.zPosition, e);
+						entity, chunk.x, chunk.z, e);
 				logger.warn("Compound: " + entityData);
 				logger.warn("Entity metadata dump:");
 				try {
@@ -402,7 +404,7 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 					WDLMessages.chatMessageTranslated(
 							WDLMessageTypes.ERROR,
 							"wdl.messages.generalError.failedToSaveTE",
-							te, pos, chunk.xPosition, chunk.zPosition, e);
+							te, pos, chunk.x, chunk.z, e);
 					logger.warn("Compound: " + compound);
 					continue;
 				}
@@ -439,7 +441,7 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 					WDLMessages.chatMessageTranslated(
 							WDLMessageTypes.ERROR,
 							"wdl.messages.generalError.failedToSaveTE",
-							te, pos, chunk.xPosition, chunk.zPosition, e);
+							te, pos, chunk.x, chunk.z, e);
 					logger.warn("Compound: " + compound);
 					continue;
 				}
@@ -471,7 +473,7 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 
 		try {
 			dis = RegionFileCache.getChunkInputStream(chunkSaveLocation,
-					chunk.xPosition, chunk.zPosition);
+					chunk.x, chunk.z);
 
 			if (dis == null) {
 				// This happens whenever the chunk hasn't been saved before.
@@ -508,7 +510,7 @@ public class WDLChunkLoader extends AnvilChunkLoader {
 		} catch (Exception e) {
 			WDLMessages.chatMessageTranslated(WDLMessageTypes.ERROR,
 					"wdl.messages.generalError.failedToImportTE",
-					chunk.xPosition, chunk.zPosition, e);
+					chunk.x, chunk.z, e);
 		} finally {
 			if (dis != null) {
 				try {

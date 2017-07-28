@@ -7,7 +7,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.IMerchant;
 import net.minecraft.entity.item.EntityMinecartChest;
 import net.minecraft.entity.item.EntityMinecartHopper;
-import net.minecraft.entity.passive.AbstractHorse;
+import net.minecraft.entity.passive.EquineEntity;
 import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.init.Blocks;
 import net.minecraft.inventory.ContainerBeacon;
@@ -64,6 +64,9 @@ public class WDLEvents {
 		profiler.startSection("Core");
 		
 		if (WDL.minecraft.isIntegratedServerRunning()) {
+			// Don't do anything else in single player
+			
+			profiler.endSection();  // "Core"
 			return;
 		}
 		
@@ -84,7 +87,7 @@ public class WDLEvents {
 
 		boolean sameServer = WDL.loadWorld();
 		
-		WDLUpdateChecker.startIfNeeded();
+		WDLUpdateChecker.startIfNeeded();  // TODO: Always check for updates, even in single player
 		
 		profiler.endSection();  // "Core"
 		
@@ -110,13 +113,13 @@ public class WDLEvents {
 			WDLMessages.chatMessageTranslated(
 					WDLMessageTypes.ON_CHUNK_NO_LONGER_NEEDED,
 					"wdl.messages.onChunkNoLongerNeeded.saved",
-					unneededChunk.xPosition, unneededChunk.zPosition);
+					unneededChunk.x, unneededChunk.z);
 			WDL.saveChunk(unneededChunk);
 		} else {
 			WDLMessages.chatMessageTranslated(
 					WDLMessageTypes.ON_CHUNK_NO_LONGER_NEEDED,
 					"wdl.messages.onChunkNoLongerNeeded.didNotSave",
-					unneededChunk.xPosition, unneededChunk.zPosition);
+					unneededChunk.x, unneededChunk.z);
 		}
 	}
 
@@ -135,8 +138,6 @@ public class WDLEvents {
 			WDL.lastEntity = WDL.minecraft.objectMouseOver.entityHit;
 		} else {
 			WDL.lastEntity = null;
-			// func_178782_a returns a BlockPos; find another one
-			// if it is reobfuscated.
 			WDL.lastClickedBlock = WDL.minecraft.objectMouseOver.getBlockPos();
 		}
 	}
@@ -150,14 +151,14 @@ public class WDLEvents {
 		
 		String saveName = "";
 
-		if (WDL.thePlayer.getRidingEntity() instanceof AbstractHorse) {
+		if (WDL.thePlayer.getRidingEntity() instanceof EquineEntity) {
 			//If the player is on a horse, check if they are opening the
 			//inventory of the horse they are on.  If so, use that,
 			//rather than the entity being looked at.
 			if (WDL.windowContainer instanceof ContainerHorseInventory) {
-				AbstractHorse horseInContainer = ReflectionUtils
-						.stealAndGetField(WDL.windowContainer,
-								AbstractHorse.class);
+				EquineEntity horseInContainer = ReflectionUtils
+						.findAndGetPrivateField(WDL.windowContainer,
+								EquineEntity.class);
 
 				//Intentional reference equals
 				if (horseInContainer == WDL.thePlayer.getRidingEntity()) {
@@ -171,7 +172,7 @@ public class WDLEvents {
 						return true;
 					}
 
-					AbstractHorse entityHorse = (AbstractHorse)
+					EquineEntity entityHorse = (EquineEntity)
 							WDL.thePlayer.getRidingEntity();
 					saveHorse((ContainerHorseInventory)WDL.windowContainer, entityHorse);
 
@@ -218,16 +219,16 @@ public class WDLEvents {
 			} else if (WDL.lastEntity instanceof EntityVillager
 					&& WDL.windowContainer instanceof ContainerMerchant) {
 				EntityVillager ev = (EntityVillager) WDL.lastEntity;
-				MerchantRecipeList list = (ReflectionUtils.stealAndGetField(
+				MerchantRecipeList list = (ReflectionUtils.findAndGetPrivateField(
 						WDL.windowContainer, IMerchant.class)).getRecipes(
 								WDL.thePlayer);
-				ReflectionUtils.stealAndSetField(ev, MerchantRecipeList.class, list);
+				ReflectionUtils.findAndSetPrivateField(ev, MerchantRecipeList.class, list);
 				
 				saveName = "villager";
-			} else if (WDL.lastEntity instanceof AbstractHorse
+			} else if (WDL.lastEntity instanceof EquineEntity
 					&& WDL.windowContainer instanceof ContainerHorseInventory) {
 				saveHorse((ContainerHorseInventory) WDL.windowContainer,
-						(AbstractHorse) WDL.lastEntity);
+						(EquineEntity) WDL.lastEntity);
 				
 				saveName = "horse";
 			} else {
@@ -366,7 +367,7 @@ public class WDLEvents {
 			saveName = "enderChest";
 		} else if (WDL.windowContainer instanceof ContainerBrewingStand
 				&& te instanceof TileEntityBrewingStand) {
-			IInventory brewingInventory = ReflectionUtils.stealAndGetField(
+			IInventory brewingInventory = ReflectionUtils.findAndGetPrivateField(
 					WDL.windowContainer, IInventory.class);
 			WDL.saveContainerItems(WDL.windowContainer, (TileEntityBrewingStand) te, 0);
 			WDL.saveInventoryFields(brewingInventory, (TileEntityBrewingStand) te);
@@ -379,7 +380,7 @@ public class WDLEvents {
 			saveName = "dispenser";
 		} else if (WDL.windowContainer instanceof ContainerFurnace
 				&& te instanceof TileEntityFurnace) {
-			IInventory furnaceInventory = ReflectionUtils.stealAndGetField(
+			IInventory furnaceInventory = ReflectionUtils.findAndGetPrivateField(
 					WDL.windowContainer, IInventory.class);
 			WDL.saveContainerItems(WDL.windowContainer, (TileEntityFurnace) te, 0);
 			WDL.saveInventoryFields(furnaceInventory, (TileEntityFurnace) te);
@@ -461,13 +462,8 @@ public class WDLEvents {
 	 * Must be called when an entity is about to be removed from the world.
 	 */
 	public static void onRemoveEntityFromWorld(Entity entity) {
-		/*
 		// If the entity is being removed and it's outside the default tracking
 		// range, go ahead and remember it until the chunk is saved.
-
-		// Proper tracking ranges can be found in EntityTracker#trackEntity
-		// (the one that takes an Entity as a paremeter) -- it's the 2nd arg
-		// given to addEntityToTracker.
 		if (WDL.downloading && entity != null
 				&& WDLPluginChannels.canSaveEntities(entity.chunkCoordX,
 						entity.chunkCoordZ)) {
@@ -511,7 +507,7 @@ public class WDLEvents {
 					WDLMessageTypes.REMOVE_ENTITY,
 					"wdl.messages.removeEntity.allowingRemoveDistance",
 					entity, distance, threshold);
-		}*/
+		}
 	}
 
 	/**
@@ -544,7 +540,7 @@ public class WDLEvents {
 	 * @param container
 	 * @param horse
 	 */
-	private static void saveHorse(ContainerHorseInventory container, AbstractHorse horse) {
+	private static void saveHorse(ContainerHorseInventory container, EquineEntity horse) {
 		final int PLAYER_INVENTORY_SLOTS = 4 * 9;
 		ContainerHorseChest horseInventory = new ContainerHorseChest(
 				"HorseChest", container.inventorySlots.size()
@@ -556,6 +552,6 @@ public class WDLEvents {
 			}
 		}
 
-		ReflectionUtils.stealAndSetField(horse, AbstractHorse.class, ContainerHorseChest.class, horseInventory);
+		ReflectionUtils.findAndSetPrivateField(horse, EquineEntity.class, ContainerHorseChest.class, horseInventory);
 	}
 }

@@ -1,29 +1,43 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.resources.I18n;
-
-import org.lwjgl.input.Keyboard;
-
 import wdl.WDL;
+import wdl.config.Configuration;
+import wdl.config.IConfiguration;
+import wdl.config.settings.MiscSettings;
+import wdl.gui.widget.Button;
 
 /**
  * A GUI for selecting which world the player is currently in.
- * 
+ *
  * TODO: I might want to move the multiworld setup logic elsewhere.
  */
 public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
-	private class WorldGuiButton extends ExtButton {
-		public WorldGuiButton(int offset, int x, int y, int width,
-				int height) {
-			super(offset, x, y, width, height, "");
+	private class WorldGuiButton extends Button {
+		private final int buttonOffset;
+		public WorldGuiButton(int buttonOffset, int x, int y, int width, int height) {
+			super(x, y, width, height, "");
+			this.buttonOffset = buttonOffset;
 		}
 
 		@Override
@@ -44,16 +58,13 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 			}
 		}
 
-		@Override
-		public void afterDraw() { }
-
 		/**
 		 * Gets the world folder name marked by this button.
-		 * 
+		 *
 		 * @return the world info, or null if there isn't any.
 		 */
 		public MultiworldInfo getWorldInfo() {
-			int location = index + id;
+			int location = index + buttonOffset;
 			if (location < 0) {
 				return null;
 			}
@@ -63,11 +74,21 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 
 			return linkedWorldsFiltered.get(location);
 		}
+
+		@Override
+		public void performAction() {
+			selectedMultiWorld = this.getWorldInfo();
+			if (selectedMultiWorld != null) {
+				acceptBtn.enabled = true;
+			} else {
+				acceptBtn.enabled = false;
+			}
+		}
 	}
 
 	/**
 	 * Info for a Multiworld.
-	 * 
+	 *
 	 * TODO: I may want to move this elsewhere.
 	 */
 	private static class MultiworldInfo {
@@ -86,12 +107,12 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 		 */
 		public List<String> getDescription() {
 			if (description == null) {
-				description = new ArrayList<String>();
+				description = new ArrayList<>();
 
 				// TODO: More info than just dimensions - EG if the
 				// chunk the player is in is added, etc.
 				description.add("Defined dimensions:");
-				File savesFolder = new File(WDL.minecraft.mcDataDir, "saves");
+				File savesFolder = new File(WDL.minecraft.gameDir, "saves");
 				File world = new File(savesFolder, WDL.getWorldFolderName(folderName));
 				File[] subfolders = world.listFiles();
 
@@ -128,7 +149,7 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 	/**
 	 * Interface for a listener when the "cancel" or "use this world" buttons
 	 * are clicked.
-	 * 
+	 *
 	 * Note that implementations must <i>also</i> handle opening the correct
 	 * next GUI.
 	 */
@@ -140,7 +161,7 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 
 		/**
 		 * Called when the "Use this world" button is clicked.
-		 * 
+		 *
 		 * @param selectedWorld
 		 *            The folder name for the given world.
 		 */
@@ -217,26 +238,26 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 		this.callback = callback;
 
 		// Build a list of world names.
-		String[] worldNames = WDL.baseProps.getProperty("LinkedWorlds")
+		String[] worldNames = WDL.baseProps.getValue(MiscSettings.LINKED_WORLDS)
 				.split("\\|");
-		linkedWorlds = new ArrayList<MultiworldInfo>();
+		linkedWorlds = new ArrayList<>();
 
 		for (String worldName : worldNames) {
 			if (worldName == null || worldName.isEmpty()) {
 				continue;
 			}
 
-			Properties props = WDL.loadWorldProps(worldName);
+			IConfiguration props = WDL.loadWorldProps(worldName);
 
-			if (!props.containsKey("WorldName")) {
+			String displayName = props.getValue(MiscSettings.WORLD_NAME);
+			if (displayName.isEmpty()) {
 				continue;
 			}
 
-			String displayName = props.getProperty("WorldName", worldName);
 			linkedWorlds.add(new MultiworldInfo(worldName, displayName));
 		}
 
-		linkedWorldsFiltered = new ArrayList<MultiworldInfo>();
+		linkedWorldsFiltered = new ArrayList<>();
 		linkedWorldsFiltered.addAll(linkedWorlds);
 	}
 
@@ -253,16 +274,28 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 		int offset = (numWorldButtons * 155 + 45) / 2;
 		int y = this.height - 49;
 
-		this.cancelBtn = new GuiButton(-1, this.width / 2 - 155, this.height - 25,
-				150, 20, I18n.format("gui.cancel"));
+		this.cancelBtn = new Button(this.width / 2 - 155, this.height - 25,
+				150, 20, I18n.format("gui.cancel")) {
+			public @Override void performAction() {
+				callback.onCancel();
+			}
+		};
 		this.buttonList.add(this.cancelBtn);
 
-		this.acceptBtn = new GuiButton(-2, this.width / 2 + 5, this.height - 25,
-				150, 20, I18n.format("wdl.gui.multiworldSelect.done"));
+		this.acceptBtn = new Button(this.width / 2 + 5, this.height - 25,
+				150, 20, I18n.format("wdl.gui.multiworldSelect.done")) {
+			public @Override void performAction() {
+				callback.onWorldSelected(selectedMultiWorld.folderName);
+			}
+		};
 		this.acceptBtn.enabled = (selectedMultiWorld != null);
 		this.buttonList.add(this.acceptBtn);
 
-		prevButton = new GuiButton(-4, this.width / 2 - offset, y, 20, 20, "<");
+		prevButton = new Button(this.width / 2 - offset, y, 20, 20, "<") {
+			public @Override void performAction() {
+				index--;
+			}
+		};
 		this.buttonList.add(prevButton);
 
 		for (int i = 0; i < numWorldButtons; i++) {
@@ -270,90 +303,52 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 					+ i * 155 + 25, y, 150, 20));
 		}
 
-		nextButton = new GuiButton(-5, this.width / 2 - offset + 25
-				+ numWorldButtons * 155, y, 20, 20, ">");
+		nextButton = new Button(this.width / 2 - offset + 25
+				+ numWorldButtons * 155, y, 20, 20, ">") {
+			public @Override void performAction() {
+				index++;
+			}
+		};
 		this.buttonList.add(nextButton);
 
-		this.newWorldButton = new GuiButton(-3, this.width / 2 - 155, 29, 150, 20,
-				I18n.format("wdl.gui.multiworldSelect.newName"));
+		this.newWorldButton = new Button(this.width / 2 - 155, 29, 150, 20,
+				I18n.format("wdl.gui.multiworldSelect.newName")) {
+			public @Override void performAction() {
+				showNewWorldTextBox = true;
+			}
+		};
 		this.buttonList.add(newWorldButton);
 
 		this.newNameField = new GuiTextField(40, this.fontRenderer,
 				this.width / 2 - 155, 29, 150, 20);
+		this.addTextField(this.newNameField);
 
 		this.searchField = new GuiTextField(41, this.fontRenderer,
 				this.width / 2 + 5, 29, 150, 20);
 		this.searchField.setText(searchText);
+		this.addTextField(this.searchField);
 	}
 
 	@Override
-	protected void actionPerformed(GuiButton button) {
-		if (button.enabled) {
-			if (button instanceof WorldGuiButton) {
-				selectedMultiWorld = ((WorldGuiButton) button).getWorldInfo();
-				if (selectedMultiWorld != null) {
-					acceptBtn.enabled = true;
-				} else {
-					acceptBtn.enabled = false;
-				}
-			} else if (button.id == -1) {
-				callback.onCancel();
-			} else if (button.id == -2) {
-				callback.onWorldSelected(selectedMultiWorld.folderName);
-			} else if (button.id == -3) {
-				this.showNewWorldTextBox = true;
-			} else if (button.id == -4) {
-				index--;
-			} else if (button.id == -5) {
-				index++;
-			}
-		}
+	public boolean onCloseAttempt() {
+		callback.onCancel();
+		return true;
 	}
 
-	/**
-	 * Called when the mouse is clicked.
-	 */
 	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-			throws IOException {
-		super.mouseClicked(mouseX, mouseY, mouseButton);
+	public void charTyped(char keyChar) {
+		if (this.newNameField.isFocused() && keyChar == '\n') {
+			String newName = this.newNameField.getText();
 
-		if (this.showNewWorldTextBox) {
-			this.newNameField.mouseClicked(mouseX, mouseY, mouseButton);
-		}
-
-		this.searchField.mouseClicked(mouseX, mouseY, mouseButton);
-	}
-
-	/**
-	 * Fired when a key is typed. This is the equivalent of
-	 * KeyListener.keyTyped(KeyEvent e).
-	 */
-	@Override
-	protected void keyTyped(char typedChar, int keyCode) throws IOException {
-		if (keyCode == Keyboard.KEY_ESCAPE) {
-			callback.onCancel();
-		}
-
-		super.keyTyped(typedChar, keyCode);
-
-		if (this.showNewWorldTextBox) {
-			this.newNameField.textboxKeyTyped(typedChar, keyCode);
-
-			if (keyCode == Keyboard.KEY_RETURN) {
-				String newName = this.newNameField.getText();
-
-				if (newName != null && !newName.isEmpty()) {
-					//TODO: Ensure that the new world is in view.
-					this.addMultiworld(newName);
-					this.newNameField.setText("");
-					this.showNewWorldTextBox = false;
-				}
+			if (newName != null && !newName.isEmpty()) {
+				//TODO: Ensure that the new world is in view.
+				this.addMultiworld(newName);
+				this.newNameField.setText("");
+				this.showNewWorldTextBox = false;
 			}
 		}
 
-		// Return value of this function seems to be whether the text changed.
-		if (this.searchField.textboxKeyTyped(typedChar, keyCode)) {
+		if (this.searchField.isFocused()) {
 			this.searchText = searchField.getText();
 			rebuildFilteredWorlds();
 		}
@@ -374,6 +369,8 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 	 */
 	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+		this.drawDefaultBackground();
+
 		if (index >= linkedWorlds.size() - numWorldButtons) {
 			index = linkedWorlds.size() - numWorldButtons;
 			nextButton.enabled = false;
@@ -396,10 +393,11 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 				I18n.format("wdl.gui.multiworldSelect.subtitle"),
 				this.width / 2, 18, 0xFF0000);
 
-		if (this.showNewWorldTextBox) {
-			this.newNameField.drawTextBox();
-		}
-		this.searchField.drawTextBox();
+		newWorldButton.visible = !showNewWorldTextBox;
+		this.newNameField.setVisible(showNewWorldTextBox);
+
+		super.drawScreen(mouseX, mouseY, partialTicks);
+
 		//Hint as to what the text box does
 		if (this.searchField.getText().isEmpty() && !this.searchField.isFocused()) {
 			drawString(fontRenderer,
@@ -407,10 +405,6 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 					searchField.x + 4, searchField.y + 6,
 					0x909090);
 		}
-
-		newWorldButton.visible = !showNewWorldTextBox;
-
-		super.drawScreen(mouseX, mouseY, partialTicks);
 
 		drawMultiworldDescription();
 	}
@@ -427,13 +421,13 @@ public class GuiWDLMultiworldSelect extends GuiTurningCameraBase {
 			folderName = folderName.replace(unsafeChar, '_');
 		}
 
-		Properties worldProps = new Properties(WDL.baseProps);
-		worldProps.setProperty("WorldName", worldName);
+		IConfiguration worldProps = new Configuration(WDL.baseProps);
+		worldProps.setValue(MiscSettings.WORLD_NAME, worldName);
 
-		String linkedWorldsProp = WDL.baseProps.getProperty("LinkedWorlds");
+		String linkedWorldsProp = WDL.baseProps.getValue(MiscSettings.LINKED_WORLDS);
 		linkedWorldsProp += "|" + folderName;
 
-		WDL.baseProps.setProperty("LinkedWorlds", linkedWorldsProp);
+		WDL.baseProps.setValue(MiscSettings.LINKED_WORLDS, linkedWorldsProp);
 		WDL.saveProps(folderName, worldProps);
 
 		linkedWorlds.add(new MultiworldInfo(folderName, worldName));

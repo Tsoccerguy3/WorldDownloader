@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl;
 
 import java.lang.reflect.Method;
@@ -7,9 +21,8 @@ import java.util.Set;
 
 import javax.annotation.Nullable;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.Entity;
@@ -55,6 +68,9 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.registry.RegistryNamespaced;
 import wdl.EntityUtils.SpigotEntityType;
 import wdl.api.IEntityManager;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 // WARNING: do NOT reference any of the EntityList fields directly;
 // forge deletes some of them.
@@ -269,6 +285,8 @@ public enum StandardEntityManagers implements IEntityManager {
 		return c;
 	}
 
+	private static final Logger LOGGER = LogManager.getLogger();
+
 	/**
 	 * Reference to {@link EntityList#REGISTRY}. May be null under forge. If
 	 * null, indicates that the fallback method needs to be used.
@@ -299,7 +317,7 @@ public enum StandardEntityManagers implements IEntityManager {
 				forgeMethod = null;
 			} catch (NoSuchFieldError ex) {
 				// Yay, incompatible changes!
-				EntityUtils.logger.info("[WDL] NoSuchFieldException due to forge; switching to fallback. This is (sadly) expected: ", ex);
+				LOGGER.info("[WDL] NoSuchFieldException due to forge; switching to fallback. This is (sadly) expected: ", ex);
 				registry = null;
 				forgeMethod = EntityList.class.getMethod("getClass", ResourceLocation.class);
 			}
@@ -314,8 +332,8 @@ public enum StandardEntityManagers implements IEntityManager {
 			}
 			PROVIDED_ENTITIES = builder.build();
 		} catch (Throwable ex) {
-			EntityUtils.logger.error("[WDL] Failed to load entity list: ", ex);
-			throw Throwables.propagate(ex);
+			LOGGER.error("[WDL] Failed to load entity list: ", ex);
+			throw new RuntimeException(ex);
 		}
 	}
 	@SuppressWarnings("unchecked")
@@ -323,7 +341,7 @@ public enum StandardEntityManagers implements IEntityManager {
 		try {
 			return (Class<? extends Entity>) FORGE_FALLBACK_METHOD.invoke(null, key);
 		} catch (Exception ex) {
-			EntityUtils.logger.error("[WDL] Exception calling forge fallback method: ", ex);
+			LOGGER.error("[WDL] Exception calling forge fallback method: ", ex);
 			throw new RuntimeException(ex);
 		}
 	}

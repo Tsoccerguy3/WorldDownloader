@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.update;
 
 import java.io.File;
@@ -5,9 +19,11 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import javax.annotation.Nonnull;
 import javax.net.ssl.HttpsURLConnection;
@@ -17,6 +33,7 @@ import wdl.VersionConstants;
 import wdl.WDL;
 import wdl.WDLMessageTypes;
 import wdl.WDLMessages;
+import wdl.config.settings.MiscSettings;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -41,7 +58,7 @@ public class GithubInfoGrabber {
 	 */
 	@Nonnull
 	private static final File CACHED_RELEASES_FILE = new File(
-			Minecraft.getMinecraft().mcDataDir,
+			Minecraft.getMinecraft().gameDir,
 			"WorldDownloader_Update_Cache.json");
 
 	static {
@@ -54,13 +71,13 @@ public class GithubInfoGrabber {
 
 	/**
 	 * Gets a list of all releases.
-	 * 
+	 *
 	 * @see https://developer.github.com/v3/repos/releases/#list-releases-for-a-repository
 	 */
 	@Nonnull
 	public static List<Release> getReleases() throws Exception {
 		JsonArray array = query(RELEASE_LIST_LOCATION).getAsJsonArray();
-		List<Release> returned = new ArrayList<Release>();
+		List<Release> returned = new ArrayList<>();
 		for (JsonElement element : array) {
 			returned.add(new Release(element.getAsJsonObject()));
 		}
@@ -87,25 +104,23 @@ public class GithubInfoGrabber {
 			// avoid getting rate-limited, as if it is unchanged it no
 			// longer counts).
 			// See https://developer.github.com/v3/#conditional-requests
-			if (WDL.globalProps.getProperty("UpdateETag") != null) {
-				String etag = WDL.globalProps.getProperty("UpdateETag");
-				if (!etag.isEmpty()) {
-					connection.setRequestProperty("If-None-Match", etag);
-				}
+			Optional<String> oldEtag = WDL.globalProps.getValue(MiscSettings.UPDATE_ETAG);
+			if (oldEtag.isPresent()) {
+				connection.setRequestProperty("If-None-Match", oldEtag.get());
 			}
 
 			connection.connect();
 
-			if (connection.getResponseCode() == HttpsURLConnection.HTTP_NOT_MODIFIED) {
+			if (connection.getResponseCode() == HttpURLConnection.HTTP_NOT_MODIFIED) {
 				// 304 not modified; use the cached version.
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-						"wdl.messages.updates.usingCachedUpdates");
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.usingCachedUpdates");
 
 				stream = new FileInputStream(CACHED_RELEASES_FILE);
-			} else if (connection.getResponseCode() == HttpsURLConnection.HTTP_OK) {
+			} else if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
 				// 200 OK
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-						"wdl.messages.updates.grabingUpdatesFromGithub");
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.grabingUpdatesFromGithub");
 
 				stream = connection.getInputStream();
 			} else {
@@ -114,18 +129,13 @@ public class GithubInfoGrabber {
 						+ connection.getResponseMessage());
 			}
 
-			InputStreamReader reader = null;
-
-			try {
-				reader = new InputStreamReader(stream);
+			try (InputStreamReader reader = new InputStreamReader(stream)) {
 				JsonElement element = PARSER.parse(reader);
 
 				// Write that cached version to disk, and save the ETAG.
-				PrintStream output = null;
 				String etag = null;
-				try {
-					output = new PrintStream(CACHED_RELEASES_FILE);
-					output.println(element.toString());
+				try (PrintStream output = new PrintStream(CACHED_RELEASES_FILE)) {
+					output.println(element.toString()); // Write to file
 
 					etag = connection.getHeaderField("ETag");
 				} catch (Exception e) {
@@ -133,24 +143,11 @@ public class GithubInfoGrabber {
 					etag = null;
 					throw e;
 				} finally {
-					if (output != null) {
-						output.close();
-					}
-
-					if (etag != null) {
-						WDL.globalProps.setProperty("UpdateETag", etag);
-					} else {
-						WDL.globalProps.remove("UpdateETag");
-					}
-
+					WDL.globalProps.setValue(MiscSettings.UPDATE_ETAG, Optional.ofNullable(etag));
 					WDL.saveGlobalProps();
 				}
 
 				return element;
-			} finally {
-				if (reader != null) {
-					reader.close();
-				}
 			}
 		} finally {
 			if (stream != null) {

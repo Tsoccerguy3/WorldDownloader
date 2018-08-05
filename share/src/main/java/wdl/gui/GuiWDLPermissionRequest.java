@@ -1,23 +1,37 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
-import java.io.IOException;
 import java.util.Map;
 
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.resources.I18n;
-
-import org.lwjgl.input.Keyboard;
-
 import wdl.WDLPluginChannels;
+import wdl.gui.widget.Button;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.TextList;
 
 /**
  * GUI for requesting permissions.  Again, this is a work in progress.
  */
-public class GuiWDLPermissionRequest extends GuiScreen {
+public class GuiWDLPermissionRequest extends Screen {
 	private static final int TOP_MARGIN = 61, BOTTOM_MARGIN = 32;
-	
+
 	private TextList list;
 	/**
 	 * Parent GUI screen; displayed when this GUI is closed.
@@ -31,15 +45,15 @@ public class GuiWDLPermissionRequest extends GuiScreen {
 	 * GUIButton for submitting the request.
 	 */
 	private GuiButton submitButton;
-	
+
 	public GuiWDLPermissionRequest(GuiScreen parent) {
 		this.parent = parent;
 	}
-	
+
 	@Override
 	public void initGui() {
 		this.list = new TextList(mc, width, height, TOP_MARGIN, BOTTOM_MARGIN);
-		
+
 		list.addLine("\u00A7c\u00A7lThis is a work in progress.");
 		list.addLine("You can request permissions in this GUI, although " +
 				"it currently requires manually specifying the names.");
@@ -47,137 +61,78 @@ public class GuiWDLPermissionRequest extends GuiScreen {
 		list.addLine("Boolean fields: " + WDLPluginChannels.BOOLEAN_REQUEST_FIELDS);
 		list.addLine("Integer fields: " + WDLPluginChannels.INTEGER_REQUEST_FIELDS);
 		list.addBlankLine();
-		
-		
+
+
 		//Get the existing requests.
 		for (Map.Entry<String, String> request : WDLPluginChannels
 				.getRequests().entrySet()) {
 			list.addLine("Requesting '" + request.getKey() + "' to be '"
 					+ request.getValue() + "'.");
 		}
-		
+		this.addList(this.list);
+
 		this.requestField = new GuiTextField(0, fontRenderer,
 				width / 2 - 155, 18, 150, 20);
-		
-		this.submitButton = new GuiButton(1, width / 2 + 5, 18, 150,
-				20, "Submit request");
+		this.addTextField(requestField);
+
+		this.submitButton = new Button(width / 2 + 5, 18,
+				150, 20, "Submit request") {
+			public @Override void performAction() {
+				WDLPluginChannels.sendRequests();
+				displayString = "Submitted!";
+			}
+		};
 		this.submitButton.enabled = !(WDLPluginChannels.getRequests().isEmpty());
 		this.buttonList.add(this.submitButton);
-		
-		this.buttonList.add(new GuiButton(100, width / 2 - 100, height - 29,
-				I18n.format("gui.done")));
-		
-		this.buttonList.add(new GuiButton(200, this.width / 2 - 155, 39, 100, 20,
-				I18n.format("wdl.gui.permissions.current")));
-		this.buttonList.add(new GuiButton(201, this.width / 2 - 50, 39, 100, 20,
-				I18n.format("wdl.gui.permissions.request")));
-		this.buttonList.add(new GuiButton(202, this.width / 2 + 55, 39, 100, 20,
-				I18n.format("wdl.gui.permissions.overrides")));
+
+		this.buttonList.add(new ButtonDisplayGui(width / 2 - 100, height - 29,
+				200, 20, this.parent));
+
+		this.buttonList.add(new ButtonDisplayGui(this.width / 2 - 155, 39, 100, 20,
+				I18n.format("wdl.gui.permissions.current"), () -> new GuiWDLPermissions(this.parent)));
+		this.buttonList.add(new Button(this.width / 2 - 50, 39, 100, 20,
+				I18n.format("wdl.gui.permissions.request")) {
+			public @Override void performAction() {
+				// Would open this GUI; do nothing.
+			}
+		});
+		this.buttonList.add(new ButtonDisplayGui(this.width / 2 + 55, 39, 100, 20,
+				I18n.format("wdl.gui.permissions.overrides"), () -> new GuiWDLChunkOverrides(this.parent)));
 	}
-	
+
 	@Override
-	protected void actionPerformed(GuiButton button) throws IOException {
-		if (button.id == 1) {
-			WDLPluginChannels.sendRequests();
-			button.displayString = "Submitted!";
-		}
-		
-		if (button.id == 100) {
-			this.mc.displayGuiScreen(this.parent);
-		}
-		
-		if (button.id == 200) {
-			this.mc.displayGuiScreen(new GuiWDLPermissions(this.parent));
-		}
-		if (button.id == 201) {
-			// Do nothing; on that GUI.
-		}
-		if (button.id == 202) {
-			this.mc.displayGuiScreen(new GuiWDLChunkOverrides(this.parent));
-		}
-	}
-	
-	@Override
-	public void updateScreen() {
-		requestField.updateCursorCounter();
-		super.updateScreen();
-	}
-	
-	/**
-	 * Called when the mouse is clicked.
-	 */
-	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-	throws IOException {
-		requestField.mouseClicked(mouseX, mouseY, mouseButton);
-		list.mouseClicked(mouseX, mouseY, mouseButton);
-		super.mouseClicked(mouseX, mouseY, mouseButton);
-	}
-	
-	@Override
-	protected void keyTyped(char typedChar, int keyCode) throws IOException {
-		super.keyTyped(typedChar, keyCode);
-		requestField.textboxKeyTyped(typedChar, keyCode);
-		
-		if (requestField.isFocused()) {
-			String request = requestField.getText();
-			
-			boolean isValid = false;
-			
-			if (request.contains("=")) {
-				String[] requestData = request.split("=", 2);
-				if (requestData.length == 2) {
-					String key = requestData[0];
-					String value = requestData[1];
-					
-					isValid = WDLPluginChannels.isValidRequest(key, value);
-					
-					if (isValid && keyCode == Keyboard.KEY_RETURN) {
-						requestField.setText("");
-						isValid = false;
-						
-						WDLPluginChannels.addRequest(key, value);
-						list.addLine("Requesting '" + key + "' to be '"
-								+ value + "'.");
-						submitButton.enabled = true;
-					}
+	public void charTyped(char keyChar) {
+		String request = requestField.getText();
+		boolean isValid = false;
+
+		if (request.contains("=")) {
+			String[] requestData = request.split("=", 2);
+			if (requestData.length == 2) {
+				String key = requestData[0];
+				String value = requestData[1];
+
+				isValid = WDLPluginChannels.isValidRequest(key, value);
+
+				if (isValid && keyChar == '\n') {
+					requestField.setText("");
+					isValid = false;
+
+					WDLPluginChannels.addRequest(key, value);
+					list.addLine("Requesting '" + key + "' to be '"
+							+ value + "'.");
+					submitButton.enabled = true;
 				}
 			}
-			
-			requestField.setTextColor(isValid ? 0x40E040 : 0xE04040);
 		}
+
+		requestField.setTextColor(isValid ? 0x40E040 : 0xE04040);
 	}
-	
-	/**
-	 * Handles mouse input.
-	 */
-	@Override
-	public void handleMouseInput() throws IOException {
-		super.handleMouseInput();
-		this.list.handleMouseInput();
-	}
-	
-	@Override
-	protected void mouseReleased(int mouseX, int mouseY, int state) {
-		if (list.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		super.mouseReleased(mouseX, mouseY, state);
-	}
-	
+
 	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-		if (this.list == null) {
-			return;
-		}
-		
-		this.list.drawScreen(mouseX, mouseY, partialTicks);
-		
-		requestField.drawTextBox();
-		
+		super.drawScreen(mouseX, mouseY, partialTicks);
+
 		this.drawCenteredString(this.fontRenderer, "Permission request",
 				this.width / 2, 8, 0xFFFFFF);
-		
-		super.drawScreen(mouseX, mouseY, partialTicks);
 	}
 }

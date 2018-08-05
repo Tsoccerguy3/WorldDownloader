@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.update;
 
 import java.io.FileNotFoundException;
@@ -11,20 +25,20 @@ import java.security.MessageDigest;
 public class ClassHasher {
 	// http://stackoverflow.com/a/9855338/3991344
 	private static final char[] hexArray = "0123456789ABCDEF".toCharArray();
-	
+
 	public static String bytesToHex(byte[] bytes) {
-	    char[] hexChars = new char[bytes.length * 2];
-	    for ( int j = 0; j < bytes.length; j++ ) {
-	        int v = bytes[j] & 0xFF;
-	        hexChars[j * 2] = hexArray[v >>> 4];
-	        hexChars[j * 2 + 1] = hexArray[v & 0x0F];
-	    }
-	    return new String(hexChars);
+		char[] hexChars = new char[bytes.length * 2];
+		for ( int j = 0; j < bytes.length; j++ ) {
+			int v = bytes[j] & 0xFF;
+			hexChars[j * 2] = hexArray[v >>> 4];
+			hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+		}
+		return new String(hexChars);
 	}
-	
+
 	/**
 	 * Calculates the hash of the given file.
-	 * 
+	 *
 	 * @param relativeTo
 	 *            Name of class to use {@link Class#getResourceAsStream(String)}
 	 *            on.
@@ -43,30 +57,17 @@ public class ClassHasher {
 			throws ClassNotFoundException, FileNotFoundException, Exception {
 		Class<?> clazz = Class.forName(relativeTo);
 		MessageDigest digest = MessageDigest.getInstance("MD5");
-		
-		InputStream stream = null;
-		try {
-			stream = clazz.getResourceAsStream(file);
+
+		try (InputStream stream = clazz.getResourceAsStream(file)) {
 			if (stream == null) {
 				throw new FileNotFoundException(file + " relative to "
 						+ relativeTo);
 			}
-			DigestInputStream digestStream = null;
-			try {
-				digestStream = new DigestInputStream(stream, digest);
-				
+			try (DigestInputStream digestStream = new DigestInputStream(stream, digest)) {
 				while (digestStream.read() != -1); //Read entire stream
-			} finally {
-				if (digestStream != null) {
-					digestStream.close();
-				}
-			}
-		} finally {
-			if (stream != null) {
-				stream.close();
 			}
 		}
-		
+
 		return bytesToHex(digest.digest());
 	}
 }

@@ -1,53 +1,76 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.google.common.collect.Multimap;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiListExtended;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
 import wdl.EntityUtils;
 import wdl.WDL;
 import wdl.WDLMessageTypes;
 import wdl.WDLMessages;
-import wdl.WDLPluginChannels;
-
-import com.google.common.collect.Multimap;
+import wdl.config.IConfiguration;
+import wdl.config.settings.EntitySettings;
+import wdl.config.settings.EntitySettings.TrackDistanceMode;
+import wdl.gui.widget.Button;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.GuiList;
+import wdl.gui.widget.GuiList.GuiListEntry;
+import wdl.gui.widget.GuiSlider;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.SettingButton;
 
 /**
  * GUI that controls what entities are saved.
  */
-public class GuiWDLEntities extends GuiScreen {
-	private class GuiEntityList extends GuiListExtended {
+public class GuiWDLEntities extends Screen {
+	private class GuiEntityList extends GuiList<GuiEntityList.Entry> {
 		/**
 		 * Width of the largest entry.
 		 */
 		private int largestWidth;
 		/**
 		 * Width of an entire entry.
-		 * 
+		 *
 		 * Equal to largestWidth + 255.
 		 */
 		private int totalWidth;
 
-		@SuppressWarnings("serial")
-		private List<GuiListEntry> entries = new ArrayList<GuiListEntry>() {{
+		{
+			List<Entry> entries = this.getEntries();
 			try {
-				int largestWidthSoFar = 0;
-
 				Multimap<String, String> entities = EntityUtils
 						.getEntitiesByGroup();
+				largestWidth = entities.values().stream()
+						.mapToInt(fontRenderer::getStringWidth)
+						.max().orElse(0);
+				totalWidth = largestWidth + 255;
 
 				// Partially sort map items so that the basic things are
 				// near the top. In some cases, there will be more items
 				// than just "Passive"/"Hostile"/"Other", which we want
 				// further down, but for Passive/Hostile/Other it's better
 				// to have it in consistent places.
-				List<String> categories = new ArrayList<String>(entities.keySet());
+				List<String> categories = new ArrayList<>(entities.keySet());
 				categories.remove("Passive");
 				categories.remove("Hostile");
 				categories.remove("Other");
@@ -58,93 +81,61 @@ public class GuiWDLEntities extends GuiScreen {
 
 				for (String category : categories) {
 					CategoryEntry categoryEntry = new CategoryEntry(category);
-					add(categoryEntry);
+					entries.add(categoryEntry);
 
-					List<String> categoryEntities = new ArrayList<String>(
-							entities.get(category));
-					Collections.sort(categoryEntities);
-
-					for (String entity : categoryEntities) {
-						add(new EntityEntry(categoryEntry, entity));
-
-						int width = fontRenderer.getStringWidth(entity);
-						if (width > largestWidthSoFar) {
-							largestWidthSoFar = width;
-						}
-					}
+					entities.get(category).stream()
+							.sorted()
+							.map(entity -> new EntityEntry(categoryEntry, entity))
+							.forEachOrdered(entries::add);
 				}
-
-				largestWidth = largestWidthSoFar;
-				totalWidth = largestWidth + 255;
 			} catch (Exception e) {
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.ERROR,
-						"wdl.messages.generalError.failedToSetUpEntityUI", e);
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.ERROR, "wdl.messages.generalError.failedToSetUpEntityUI", e);
 
 				Minecraft.getMinecraft().displayGuiScreen(null);
 			}
-		}};
+		}
+
+		/** Needed for proper generics behavior, unfortunately. */
+		private abstract class Entry extends GuiListEntry<Entry> { }
 
 		/**
 		 * Provides a label.
-		 * 
-		 * Based off of 
+		 *
+		 * Based off of
 		 * {@link net.minecraft.client.gui.GuiKeyBindingList.CategoryEntry}.
 		 */
-		private class CategoryEntry extends GuiListEntry {
-			private final String group;
+		private class CategoryEntry extends Entry {
 			private final String displayGroup;
 			private final int labelWidth;
 
-			private final GuiButton enableGroupButton; 
+			private final Button enableGroupButton;
 
 			private boolean groupEnabled;
 
 			public CategoryEntry(String group) {
-				this.group = group;
 				this.displayGroup = EntityUtils.getDisplayGroup(group);
 				this.labelWidth = mc.fontRenderer.getStringWidth(displayGroup);
 
-				this.groupEnabled = WDL.worldProps.getProperty("EntityGroup."
-						+ group + ".Enabled", "true").equals("true");
+				this.groupEnabled = config.isEntityGroupEnabled(group);
 
-				this.enableGroupButton = new GuiButton(0, 0, 0, 90, 18, 
-						getButtonText());
+				this.enableGroupButton = new Button(0, 0, 90, 18, getButtonText()) {
+					public @Override void performAction() {
+						groupEnabled ^= true;
+						this.displayString = getButtonText();
+						config.setEntityGroupEnabled(group, groupEnabled);
+					}
+				};
+				this.addButton(enableGroupButton, 0, 0);
 			}
 
 			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
+			public void drawEntry(int x, int y, int width, int height, int mouseX, int mouseY) {
+				this.enableGroupButton.displayString = getButtonText();
+				super.drawEntry(x, y, width, height, mouseX, mouseY);
 				mc.fontRenderer.drawString(this.displayGroup, (x + 110 / 2)
 						- (this.labelWidth / 2), y + slotHeight
 						- mc.fontRenderer.FONT_HEIGHT - 1, 0xFFFFFF);
-
-				this.enableGroupButton.x = x + 110;
-				this.enableGroupButton.y = y;
-				this.enableGroupButton.displayString = getButtonText();
-
-				LocalUtils.drawButton(this.enableGroupButton, mc, mouseX, mouseY);
-			}
-
-			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (enableGroupButton.mousePressed(mc, x, y)) {
-					groupEnabled ^= true;
-
-					enableGroupButton.playPressSound(mc.getSoundHandler());
-
-					this.enableGroupButton.displayString = getButtonText();
-
-					WDL.worldProps.setProperty("EntityGroup." + group
-							+ ".Enabled", Boolean.toString(groupEnabled));
-					return true;
-				}
-				return false;
-			}
-
-			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
 			}
 
 			boolean isGroupEnabled() {
@@ -165,118 +156,81 @@ public class GuiWDLEntities extends GuiScreen {
 
 		/**
 		 * Contains an actual entity's data.
-		 * 
-		 * Based off of 
+		 *
+		 * Based off of
 		 * {@link net.minecraft.client.gui.GuiKeyBindingList.KeyEntry}.
 		 */
-		private class EntityEntry extends GuiListEntry {
+		private class EntityEntry extends Entry {
 			private final CategoryEntry category;
 			private final String entity;
 			private final String displayEntity;
 
-			private final GuiButton onOffButton;
+			private final Button onOffButton;
 			private final GuiSlider rangeSlider;
 
 			private boolean entityEnabled;
 			private int range;
 
-			private String cachedMode;
+			private TrackDistanceMode cachedMode; // XXX this is an ugly hack
 
 			public EntityEntry(CategoryEntry category, String entity) {
 				this.category = category;
 				this.entity = entity;
 				this.displayEntity = EntityUtils.getDisplayType(entity);
 
-				entityEnabled = WDL.worldProps.getProperty("Entity." + entity + 
-						".Enabled", "true").equals("true");
+				entityEnabled = config.isEntityTypeEnabled(entity);
 				range = EntityUtils.getEntityTrackDistance(entity);
 
-				this.onOffButton = new GuiButton(0, 0, 0, 75, 18,
-						getButtonText());
+				int buttonOffset = -(totalWidth / 2) + largestWidth + 10;
+
+				this.onOffButton = new Button(0, 0, 75, 18, getButtonText()) {
+					public @Override void performAction() {
+						entityEnabled ^= true;
+						onOffButton.displayString = getButtonText();
+						config.setEntityTypeEnabled(entity, entityEnabled);
+					}
+				};
 				this.onOffButton.enabled = category.isGroupEnabled();
+				this.addButton(onOffButton, buttonOffset, 0);
 
-				this.rangeSlider = new GuiSlider(1, 0, 0, 150, 18,
+				this.rangeSlider = new GuiSlider(0, 0, 150, 18,
 						"wdl.gui.entities.trackDistance", range, 256);
+				this.addButton(rangeSlider, buttonOffset + 85, 0);
 
-				this.cachedMode = mode;
+				this.cachedMode = config.getValue(EntitySettings.TRACK_DISTANCE_MODE);
 
-				rangeSlider.enabled = (cachedMode.equals("user"));
+				rangeSlider.enabled = (cachedMode == TrackDistanceMode.USER);
 			}
 
 			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
-				//Center for everything but the labels.
-				int center = (GuiWDLEntities.this.width / 2) - (totalWidth / 2)
-						+ largestWidth + 10;
-
-				mc.fontRenderer.drawString(this.displayEntity,
-						center - largestWidth - 10, y + slotHeight / 2 - 
-						mc.fontRenderer.FONT_HEIGHT / 2, 0xFFFFFF);
-
-				this.onOffButton.x = center;
-				this.onOffButton.y = y;
+			public void drawEntry(int x, int y, int width, int height, int mouseX, int mouseY) {
 				this.onOffButton.enabled = category.isGroupEnabled();
 				this.onOffButton.displayString = getButtonText();
 
-				this.rangeSlider.x = center + 85;
-				this.rangeSlider.y = y;
-
-				if (!this.cachedMode.equals(mode)) {
+				// XXX calculating this each time
+				TrackDistanceMode mode = config.getValue(EntitySettings.TRACK_DISTANCE_MODE);
+				if (this.cachedMode != mode) {
 					cachedMode = mode;
-					rangeSlider.enabled = (cachedMode.equals("user"));
+					rangeSlider.enabled = canEditRanges();
 
 					rangeSlider.setValue(EntityUtils
 							.getEntityTrackDistance(entity));
 				}
 
-				LocalUtils.drawButton(onOffButton, mc, mouseX, mouseY);
-				LocalUtils.drawButton(rangeSlider, mc, mouseX, mouseY);
+				super.drawEntry(x, y, width, height, mouseX, mouseY);
+
+				mc.fontRenderer.drawString(this.displayEntity,
+						x, y + height / 2 - mc.fontRenderer.FONT_HEIGHT / 2, 0xFFFFFF);
 			}
 
 			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (onOffButton.mousePressed(mc, x, y)) {
-					entityEnabled ^= true;
-
-					onOffButton.playPressSound(mc.getSoundHandler());
-					onOffButton.displayString = getButtonText();
-
-					WDL.worldProps.setProperty("Entity." + entity + 
-							".Enabled", Boolean.toString(entityEnabled));
-					return true;
-				}
-				if (rangeSlider.mousePressed(mc, x, y)) {
+			public void mouseUp(int mouseX, int mouseY, int mouseButton) {
+				super.mouseUp(mouseX, mouseY, mouseButton);
+				if (this.cachedMode == TrackDistanceMode.USER) {
 					range = rangeSlider.getValue();
 
-					WDL.worldProps.setProperty("Entity." + entity
-							+ ".TrackDistance",
-							Integer.toString(range));
-
-					return true;
+					config.setUserEntityTrackDistance(entity, range);
 				}
-
-				return false;
-			}
-
-			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				rangeSlider.mouseReleased(x, y);
-
-				if (this.cachedMode.equals("user")) {
-					range = rangeSlider.getValue();
-
-					WDL.worldProps.setProperty("Entity." + entity
-							+ ".TrackDistance",
-							Integer.toString(range));
-				}
-			}
-
-			@Override
-			public void setSelected(int p_178011_1_, int p_178011_2_,
-					int p_178011_3_) {
 			}
 
 			/**
@@ -298,73 +252,45 @@ public class GuiWDLEntities extends GuiScreen {
 		}
 
 		@Override
-		public IGuiListEntry getListEntry(int index) {
-			return entries.get(index);
-		}
-
-		@Override
-		protected int getSize() {
-			return entries.size();
-		}
-
-		@Override
-		protected int getScrollBarX() {
-			return (GuiWDLEntities.this.width) / 2 + (totalWidth / 2) + 10;
+		public int getEntryWidth() {
+			return totalWidth;
 		}
 	}
 
 	private GuiEntityList entityList;
-	private GuiScreen parent;
+	private final GuiScreen parent;
+	private final IConfiguration config;
 
-	private GuiButton rangeModeButton;
+	private SettingButton rangeModeButton;
 	private GuiButton presetsButton;
-
-	private String mode;
 
 	public GuiWDLEntities(GuiScreen parent) {
 		this.parent = parent;
+		this.config = WDL.worldProps;
 	}
 
 	@Override
 	public void initGui() {
-		this.buttonList.add(new GuiButton(200, this.width / 2 - 100,
-				this.height - 29, "OK"));
+		this.buttonList.add(new ButtonDisplayGui(this.width / 2 - 100, this.height - 29,
+				200, 20, this.parent));
 
-		rangeModeButton = new GuiButton(100, this.width / 2 - 155, 18, 150,
-				20, getRangeModeText());
-		presetsButton = new GuiButton(101, this.width / 2 + 5, 18, 150, 20, 
-				I18n.format("wdl.gui.entities.rangePresets"));
+		rangeModeButton = new SettingButton(EntitySettings.TRACK_DISTANCE_MODE, this.config,
+				this.width / 2 - 155, 18, 150, 20) {
+			public @Override void performAction() {
+				super.performAction();
+				presetsButton.enabled = canEditRanges();
+			}
+		};
+		presetsButton = new ButtonDisplayGui(this.width / 2 + 5, 18, 150, 20,
+				I18n.format("wdl.gui.entities.rangePresets"), () -> new GuiWDLEntityRangePresets(this, config));
 
-		this.mode = WDL.worldProps.getProperty("Entity.TrackDistanceMode");
-
-		presetsButton.enabled = shouldEnablePresetsButton();
+		this.presetsButton.enabled = this.canEditRanges();
 
 		this.buttonList.add(rangeModeButton);
 		this.buttonList.add(presetsButton);
 
 		this.entityList = new GuiEntityList();
-	}
-
-	/**
-	 * Handles mouse input.
-	 */
-	@Override
-	public void handleMouseInput() throws IOException {
-		super.handleMouseInput();
-		this.entityList.handleMouseInput();
-	}
-
-	@Override
-	protected void actionPerformed(GuiButton button) throws IOException {
-		if (button.id == 100) {
-			cycleRangeMode();
-		}
-		if (button.id == 101 && button.enabled) {
-			mc.displayGuiScreen(new GuiWDLEntityRangePresets(this));
-		}
-		if (button.id == 200) {
-			mc.displayGuiScreen(parent);
-		}
+		this.addList(this.entityList);
 	}
 
 	@Override
@@ -373,69 +299,24 @@ public class GuiWDLEntities extends GuiScreen {
 	}
 
 	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-			throws IOException {
-		if (entityList.mouseClicked(mouseX, mouseY, mouseButton)) {
-			return;
-		}
-		super.mouseClicked(mouseX, mouseY, mouseButton);
-	}
-
-	@Override
-	protected void mouseReleased(int mouseX, int mouseY, int state) {
-		if (entityList.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		super.mouseReleased(mouseX, mouseY, state);
-	}
-
-	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
 		this.drawDefaultBackground();
-		this.entityList.drawScreen(mouseX, mouseY, partialTicks);
+
+		super.drawScreen(mouseX, mouseY, partialTicks);
 
 		this.drawCenteredString(this.fontRenderer,
 				I18n.format("wdl.gui.entities.title"), this.width / 2, 8,
 				0xFFFFFF);
 
-		super.drawScreen(mouseX, mouseY, partialTicks);
-	}
-
-	/**
-	 * Cycles the range mode value.
-	 */
-	private void cycleRangeMode() {
-		if (mode.equals("default")) {
-			if (WDLPluginChannels.hasServerEntityRange()) {
-				mode = "server";
-			} else {
-				mode = "user";
-			}
-		} else if (mode.equals("server")) {
-			mode = "user";
-		} else {
-			mode = "default";
+		if (this.rangeModeButton.isMouseOver()) {
+			Utils.drawGuiInfoBox(this.rangeModeButton.getTooltip(), width, height, 48);
 		}
-
-		WDL.worldProps.setProperty("Entity.TrackDistanceMode", mode);
-
-		rangeModeButton.displayString = getRangeModeText();
-		presetsButton.enabled = shouldEnablePresetsButton();
 	}
 
 	/**
-	 * Gets the text for the range mode button.
+	 * Returns true if the various controls can be edited on the current mode.
 	 */
-	private String getRangeModeText() {
-		String mode = WDL.worldProps.getProperty("Entity.TrackDistanceMode");
-
-		return I18n.format("wdl.gui.entities.trackDistanceMode." + mode);
-	}
-
-	/**
-	 * Is the current mode a mode where the presets button should be enabled?
-	 */
-	private boolean shouldEnablePresetsButton() {
-		return mode.equals("user");
+	private boolean canEditRanges() {
+		return config.getValue(EntitySettings.TRACK_DISTANCE_MODE) == TrackDistanceMode.USER;
 	}
 }

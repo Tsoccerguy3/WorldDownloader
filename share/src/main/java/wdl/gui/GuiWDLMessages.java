@@ -1,212 +1,164 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017-2018 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.stream.Stream;
+
+import javax.annotation.Nullable;
+
+import com.google.common.collect.ListMultimap;
 
 import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiListExtended;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiYesNo;
 import net.minecraft.client.resources.I18n;
 import wdl.MessageTypeCategory;
 import wdl.WDL;
 import wdl.WDLMessages;
-import wdl.api.IWDLMessageType;
+import wdl.WDLMessages.MessageRegistration;
+import wdl.config.IConfiguration;
+import wdl.config.settings.MessageSettings;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.GuiList;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.GuiList.GuiListEntry;
+import wdl.gui.widget.SettingButton;
 
-public class GuiWDLMessages extends GuiScreen {
+public class GuiWDLMessages extends Screen {
 	/**
 	 * Set from inner classes; this is the text to draw.
 	 */
-	private String hoveredButtonDescription = null;
+	@Nullable
+	private String hoveredButtonTooltip = null;
 
-	private class GuiMessageTypeList extends GuiListExtended {
+	private class GuiMessageTypeList extends GuiList<GuiMessageTypeList.Entry> {
 		public GuiMessageTypeList() {
 			super(GuiWDLMessages.this.mc, GuiWDLMessages.this.width,
 					GuiWDLMessages.this.height, 39,
 					GuiWDLMessages.this.height - 32, 20);
 		}
 
-		private class CategoryEntry extends GuiListEntry {
-			private final GuiButton button;
+		/** Needed for proper generics behavior, unfortunately. */
+		private abstract class Entry extends GuiListEntry<Entry> { }
+
+		private class CategoryEntry extends Entry {
+			private final SettingButton button;
 			private final MessageTypeCategory category;
 
 			public CategoryEntry(MessageTypeCategory category) {
 				this.category = category;
-				this.button = new GuiButton(0, 0, 0, 80, 20, "");
+				this.button = new SettingButton(category.setting, config, 0, 0, 80, 20);
+				addButton(button, 20, 0);
 			}
 
 			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
+			public void drawEntry(int x, int y, int width, int height, int mouseX, int mouseY) {
+				button.enabled = config.getValue(MessageSettings.ENABLE_ALL_MESSAGES);
+
+				super.drawEntry(x, y, width, height, mouseX, mouseY);
+
 				drawCenteredString(fontRenderer, category.getDisplayName(),
 						GuiWDLMessages.this.width / 2 - 40, y + slotHeight
 						- mc.fontRenderer.FONT_HEIGHT - 1, 0xFFFFFF);
 
-				button.x = GuiWDLMessages.this.width / 2 + 20;
-				button.y = y;
-
-				button.displayString = I18n.format("wdl.gui.messages.group."
-						+ WDLMessages.isGroupEnabled(category));
-				button.enabled = WDLMessages.enableAllMessages;
-
-				LocalUtils.drawButton(this.button, mc, mouseX, mouseY);
-			}
-
-			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (button.mousePressed(mc, x, y)) {
-					WDLMessages.toggleGroupEnabled(category);
-
-					button.playPressSound(mc.getSoundHandler());
-
-					return true;
+				if (button.isMouseOver()) {
+					hoveredButtonTooltip = button.getTooltip();
 				}
-
-				return false;
-			}
-
-			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-
 			}
 		}
 
-		private class MessageTypeEntry extends GuiListEntry {
-			private final GuiButton button;
-			private final IWDLMessageType type;
-			private final MessageTypeCategory category;
+		private class MessageTypeEntry extends Entry {
+			private final SettingButton button;
+			private final MessageRegistration typeRegistration;
 
-			public MessageTypeEntry(IWDLMessageType type,
-					MessageTypeCategory category) {
-				this.type = type;
-				this.button = new GuiButton(0, 0, 0, type.toString());
-				this.category = category;
+			public MessageTypeEntry(MessageRegistration registration) {
+				this.typeRegistration = registration;
+				this.button = new SettingButton(registration.setting, config, 0, 0);
+				addButton(this.button, -100, 0);
 			}
 
 			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
-				button.x = GuiWDLMessages.this.width / 2 - 100;
-				button.y = y;
+			public void drawEntry(int x, int y, int width, int height, int mouseX, int mouseY) {
+				button.enabled = config.getValue(typeRegistration.category.setting);
 
-				button.displayString = I18n.format("wdl.gui.messages.message."
-						+ WDLMessages.isEnabled(type), type.getDisplayName());
-				button.enabled = WDLMessages.enableAllMessages && 
-						WDLMessages.isGroupEnabled(category);
-
-				LocalUtils.drawButton(this.button, mc, mouseX, mouseY);
+				super.drawEntry(x, y, width, height, mouseX, mouseY);
 
 				if (button.isMouseOver()) {
-					hoveredButtonDescription = type.getDescription();
+					hoveredButtonTooltip = button.getTooltip();
 				}
-			}
-
-			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (button.mousePressed(mc, x, y)) {
-					WDLMessages.toggleEnabled(type);
-
-					button.playPressSound(mc.getSoundHandler());
-
-					return true;
-				}
-
-				return false;
-			}
-
-			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-
 			}
 		}
 
-		@SuppressWarnings("serial")
-		private List<GuiListEntry> entries = new ArrayList<GuiListEntry>() {{
-			Map<MessageTypeCategory, Collection<IWDLMessageType>> map = 
-					WDLMessages.getTypes().asMap();
-			for (Map.Entry<MessageTypeCategory, Collection<IWDLMessageType>> e : map
-					.entrySet()) {
-				add(new CategoryEntry(e.getKey()));
-
-				for (IWDLMessageType type : e.getValue()) {
-					add(new MessageTypeEntry(type, e.getKey()));
-				}
-			}
-		}};
-
-		@Override
-		public IGuiListEntry getListEntry(int index) {
-			return entries.get(index);
-		}
-
-		@Override
-		protected int getSize() {
-			return entries.size();
+		// The call to Stream.concat is somewhat hacky, but hard to avoid
+		// (we want both a header an the items in it)
+		{
+			WDLMessages.getRegistrations().asMap().entrySet().stream()
+				.flatMap(e -> Stream.concat(
+						Stream.of(new CategoryEntry(e.getKey())),
+						e.getValue().stream().map(MessageTypeEntry::new)))
+				.forEach(getEntries()::add);
 		}
 
 	}
 
-	private GuiScreen parent;
+	private final GuiScreen parent;
+	private final IConfiguration config;
 	private GuiMessageTypeList list;
 
 	public GuiWDLMessages(GuiScreen parent) {
 		this.parent = parent;
+		this.config = WDL.baseProps;
 	}
 
-	private GuiButton enableAllButton;
+	private SettingButton enableAllButton;
 	private GuiButton resetButton;
+
+	private static final int ID_RESET_ALL = 101;
 
 	@Override
 	public void initGui() {
-		enableAllButton = new GuiButton(100, (this.width / 2) - 155, 18, 150,
-				20, getAllEnabledText());
+		enableAllButton = new SettingButton(MessageSettings.ENABLE_ALL_MESSAGES, this.config, (this.width / 2) - 155, 18, 150, 20);
 		this.buttonList.add(enableAllButton);
-		resetButton = new GuiButton(101, (this.width / 2) + 5, 18, 150, 20,
-				I18n.format("wdl.gui.messages.reset"));
+		resetButton = new ButtonDisplayGui((this.width / 2) + 5, 18,
+				150, 20, I18n.format("wdl.gui.messages.reset"),
+				() -> new GuiYesNo(this,
+						I18n.format("wdl.gui.messages.reset.confirm.title"),
+						I18n.format("wdl.gui.messages.reset.confirm.subtitle"),
+						ID_RESET_ALL));
 		this.buttonList.add(resetButton);
 
 		this.list = new GuiMessageTypeList();
+		this.addList(list);
 
-		this.buttonList.add(new GuiButton(102, (this.width / 2) - 100,
-				this.height - 29, I18n.format("gui.done")));
-	}
-
-	@Override
-	protected void actionPerformed(GuiButton button) throws IOException {
-		if (!button.enabled) {
-			return;
-		}
-
-		if (button.id == 100) {
-			//"Master switch"
-			WDLMessages.enableAllMessages ^= true;
-
-			WDL.baseProps.setProperty("Messages.enableAll",
-					Boolean.toString(WDLMessages.enableAllMessages));
-
-			button.displayString = getAllEnabledText();
-		} else if (button.id == 101) {
-			this.mc.displayGuiScreen(new GuiYesNo(this,
-					I18n.format("wdl.gui.messages.reset.confirm.title"),
-					I18n.format("wdl.gui.messages.reset.confirm.subtitle"),
-					101));
-		} else if (button.id == 102) {
-			this.mc.displayGuiScreen(this.parent);
-		}
+		this.buttonList.add(new ButtonDisplayGui((this.width / 2) - 100, this.height - 29,
+				200, 20, this.parent));
 	}
 
 	@Override
 	public void confirmClicked(boolean result, int id) {
 		if (result) {
-			if (id == 101) {
-				WDLMessages.resetEnabledToDefaults();
+			if (id == ID_RESET_ALL) {
+				ListMultimap<MessageTypeCategory, MessageRegistration> registrations = WDLMessages.getRegistrations();
+				config.clearValue(MessageSettings.ENABLE_ALL_MESSAGES);
+
+				for (MessageTypeCategory cat : registrations.keySet()) {
+					config.clearValue(cat.setting);
+				}
+				for (MessageRegistration r : registrations.values()) {
+					config.clearValue(r.setting);
+				}
 			}
 		}
 
@@ -218,63 +170,28 @@ public class GuiWDLMessages extends GuiScreen {
 		WDL.saveProps();
 	}
 
-	/**
-	 * Handles mouse input.
-	 */
-	@Override
-	public void handleMouseInput() throws IOException {
-		super.handleMouseInput();
-		this.list.handleMouseInput();
-	}
-
-	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-			throws IOException {
-		if (list.mouseClicked(mouseX, mouseY, mouseButton)) {
-			return;
-		}
-		super.mouseClicked(mouseX, mouseY, mouseButton);
-	}
-
-	@Override
-	protected void mouseReleased(int mouseX, int mouseY, int state) {
-		if (list.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		super.mouseReleased(mouseX, mouseY, state);
-	}
-
 	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-		hoveredButtonDescription = null;
+		hoveredButtonTooltip = null;
 
 		this.drawDefaultBackground();
-		this.list.drawScreen(mouseX, mouseY, partialTicks);
+		super.drawScreen(mouseX, mouseY, partialTicks);
 
 		this.drawCenteredString(this.fontRenderer,
 				I18n.format("wdl.gui.messages.message.title"),
 				this.width / 2, 8, 0xFFFFFF);
 
-		super.drawScreen(mouseX, mouseY, partialTicks);
-
-		if (hoveredButtonDescription != null) {
-			Utils.drawGuiInfoBox(hoveredButtonDescription, width, height, 48);
+		String tooltip = null;
+		if (hoveredButtonTooltip != null) {
+			tooltip = hoveredButtonTooltip;
 		} else if (enableAllButton.isMouseOver()) {
-			Utils.drawGuiInfoBox(
-					I18n.format("wdl.gui.messages.all.description"), width,
-					height, 48);
+			tooltip = enableAllButton.getTooltip();
 		} else if (resetButton.isMouseOver()) {
-			Utils.drawGuiInfoBox(
-					I18n.format("wdl.gui.messages.reset.description"), width,
-					height, 48);
+			tooltip = I18n.format("wdl.gui.messages.reset.description");
 		}
-	}
 
-	/**
-	 * Gets the text for the "Enable all" button.
-	 */
-	private String getAllEnabledText() {
-		return I18n.format("wdl.gui.messages.all."
-				+ WDLMessages.enableAllMessages);
+		if (tooltip != null) {
+			Utils.drawGuiInfoBox(tooltip, width, height, 48);
+		}
 	}
 }

@@ -1,0 +1,16 @@
+/.gradle/
+/bin/
+/build/
+/logs/
+/run/
+/.mixin.out/
+build.number
+
+# Eclipse
+.project
+.classpath
+1.12.2-litemod_Client.launch
+/.settings/
+
+# Idea
+1.12.2-litemod.iml

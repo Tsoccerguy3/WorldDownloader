@@ -1,9 +1,14 @@
 include 'share'
+include '1.9', '1.9-litemod'
+include '1.9.2' // There never was a 1.9.2 liteloader
+include '1.9.4', '1.9.4-litemod'
 include '1.10', '1.10-litemod'
 include '1.10.2', '1.10.2-litemod'
 include '1.11', '1.11-litemod'
 include '1.11.2', '1.11.2-litemod'
 include '1.12', '1.12-litemod'
+include '1.12.1', '1.12.1-litemod'
+include '1.12.2', '1.12.2-litemod'
 
 // More information about what went wrong
 gradle.buildFinished { buildResult ->
@@ -21,7 +26,8 @@ gradle.buildFinished { buildResult ->
     } else if (buildResult.failure.cause.cause instanceof groovy.lang.MissingPropertyException) {
         println '----------------------------------------'
         println 'Build evaluation (most likely) failed.'
-        println 'If this was due to the `refMap` property not existing, you may need to downgrade gradle to version 2.14.1.'
+        println 'If this was due to the `refMap` property not existing, this should not be happening (see https://github.com/SpongePowered/MixinGradle/issues/3).'
+        println 'Unfortunately I have no advice at this time.  You may need to downgrade gradle to version 2.14.1, but that should not be required.'
     }
   }
 }

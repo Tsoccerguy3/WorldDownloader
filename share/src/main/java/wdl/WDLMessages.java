@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017-2018 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl;
 
 import java.io.PrintWriter;
@@ -7,41 +21,46 @@ import java.util.List;
 
 import javax.annotation.Nonnull;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.resources.I18n;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.TextComponentString;
-import net.minecraft.util.text.TextComponentTranslation;
-import net.minecraft.util.text.event.HoverEvent;
-import net.minecraft.util.text.event.HoverEvent.Action;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import wdl.api.IWDLMessageType;
 
 import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.I18n;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.ITextComponent;
+import net.minecraft.util.text.TextComponentString;
+import net.minecraft.util.text.TextComponentTranslation;
+import net.minecraft.util.text.event.HoverEvent;
+import net.minecraft.util.text.event.HoverEvent.Action;
+import wdl.api.IWDLMessageType;
+import wdl.config.CyclableSetting;
+import wdl.config.IConfiguration;
+import wdl.config.settings.MessageSettings;
+
 /**
- * Handles enabling and disabling of all of the messages.
+ * Responsible for displaying messages in chat or the log, depending on whether
+ * they are enabled.
  */
 public class WDLMessages {
-	private static Logger logger = LogManager.getLogger();
+	private static final Logger LOGGER = LogManager.getLogger();
 
 	/**
 	 * Information about an individual message type.
 	 */
-	private static class MessageRegistration {
+	public static class MessageRegistration {
 		public final String name;
 		public final IWDLMessageType type;
 		public final MessageTypeCategory category;
+		public final CyclableSetting<Boolean> setting;
 
 		/**
 		 * Creates a MessageRegistration.
-		 * 
+		 *
 		 * @param name The name to use.
 		 * @param type The type bound to this registration.
 		 * @param category The category.
@@ -51,6 +70,7 @@ public class WDLMessages {
 			this.name = name;
 			this.type = type;
 			this.category = category;
+			this.setting = new MessageSettings.MessageTypeSetting(this);
 		}
 
 		@Override
@@ -107,196 +127,80 @@ public class WDLMessages {
 	}
 
 	/**
-	 * If <code>false</code>, all messages are disabled.  Otherwise, per-
-	 * message settings are used.
+	 * List of all registrations, by category.
 	 */
-	public static boolean enableAllMessages = true;
-
-	/**
-	 * List of all registrations.
-	 */
-	private static List<MessageRegistration> registrations =
-			new ArrayList<MessageRegistration>();
+	private static ListMultimap<MessageTypeCategory, MessageRegistration> registrations = LinkedListMultimap.create();
 
 	/**
 	 * Gets the {@link MessageRegistration} for the given name.
-	 * @param name
-	 * @return The registration or null if none is found.
+	 * @param name The name to look for
+	 * @return The registration
+	 * @throws IllegalArgumentException for unknown names
 	 */
-	@SuppressWarnings("unused")
-	private static MessageRegistration getRegistration(String name) {
-		for (MessageRegistration r : registrations) {
+	@Nonnull
+	public static MessageRegistration getRegistration(String name) {
+		for (MessageRegistration r : registrations.values()) {
 			if (r.name.equals(name)) {
 				return r;
 			}
 		}
-		return null;
+		throw new IllegalArgumentException("Asked for the registration for " + name + ", but there is no registration for that!");
 	}
 
 	/**
 	 * Gets the {@link MessageRegistration} for the given {@link IWDLMessageType}.
-	 * @param name
-	 * @return The registration or null if none is found.
+	 * @param type The type to look for
+	 * @return The registration
+	 * @throws IllegalArgumentException for unknown names
 	 */
-	private static MessageRegistration getRegistration(IWDLMessageType type) {
-		for (MessageRegistration r : registrations) {
+	@Nonnull
+	public static MessageRegistration getRegistration(IWDLMessageType type) {
+		for (MessageRegistration r : registrations.values()) {
 			if (r.type.equals(type)) {
 				return r;
 			}
 		}
-		return null;
+		throw new IllegalArgumentException("Asked for the registration for " + type + ", but there is no registration for that!");
 	}
 
 	/**
 	 * Adds registration for another type of message.
-	 * 
+	 *
 	 * @param name The programmatic name.
 	 * @param type The type.
 	 * @param category The category.
 	 */
 	public static void registerMessage(String name, IWDLMessageType type,
 			MessageTypeCategory category) {
-		registrations.add(new MessageRegistration(name, type, category));
-
-		WDL.defaultProps.setProperty("Messages." + name, 
-				Boolean.toString(type.isEnabledByDefault()));
-		WDL.defaultProps.setProperty("MessageGroup." + category.internalName, 
-				"true");
+		registrations.put(category, new MessageRegistration(name, type, category));
 	}
 
 	/**
-	 * Is the specified type enabled?
-	 */
-	public static boolean isEnabled(IWDLMessageType type) {
-		if (type == null) {
-			return false;
-		}
-		if (!enableAllMessages) {
-			return false;
-		}
-		MessageRegistration r = getRegistration(type);
-		if (r == null) {
-			return false;
-		}
-
-		if (!isGroupEnabled(r.category)) {
-			return false;
-		}
-
-		if (!WDL.baseProps.containsKey("Messages." + r.name)) {
-			if (WDL.baseProps.containsKey("Debug." + r.name)) {
-				//Updating from older version
-				WDL.baseProps.put("Messages." + r.name,
-						WDL.baseProps.remove("Debug." + r.name));
-			} else {
-				WDL.baseProps.setProperty("Messages." + r.name,
-						Boolean.toString(r.type.isEnabledByDefault()));
-			}
-		}
-		return WDL.baseProps.getProperty("Messages." + r.name).equals("true");
-	}
-
-	/**
-	 * Toggles whether the given type is enabled.
-	 * @param type
-	 */
-	public static void toggleEnabled(IWDLMessageType type) {
-		MessageRegistration r = getRegistration(type);
-
-		if (r != null) {
-			WDL.baseProps.setProperty("Messages." + r.name,
-					Boolean.toString(!isEnabled(type)));
-		}
-	}
-
-	/**
-	 * Gets whether the given group is enabled.
-	 */
-	public static boolean isGroupEnabled(MessageTypeCategory group) {
-		if (!enableAllMessages) {
-			return false;
-		}
-
-		return WDL.baseProps.getProperty(
-				"MessageGroup." + group.internalName, "true").equals(
-						"true");
-	}
-
-	/**
-	 * Toggles whether a group is enabled or not.
-	 */
-	public static void toggleGroupEnabled(MessageTypeCategory group) {
-		WDL.baseProps.setProperty("MessageGroup." + group.internalName,
-				Boolean.toString(!isGroupEnabled(group)));
-	}
-
-	/**
-	 * Gets all of the MessageTypes 
+	 * Gets all of the MessageTypes
 	 * @return All the types, ordered by the category.
 	 */
 	@Nonnull
-	public static ListMultimap<MessageTypeCategory, IWDLMessageType> getTypes() {
-		ListMultimap<MessageTypeCategory, IWDLMessageType> returned = LinkedListMultimap
-				.create();
-
-		for (MessageRegistration r : registrations) {
-			returned.put(r.category, r.type);
-		}
-
-		return ImmutableListMultimap.copyOf(returned);
-	}
-
-	/**
-	 * Reset all settings to default.
-	 */
-	public static void resetEnabledToDefaults() {
-		WDL.baseProps.setProperty("Messages.enableAll", "true");
-		enableAllMessages = WDL.globalProps.getProperty("Messages.enableAll",
-				"true").equals("true");
-
-		for (MessageRegistration r : registrations) {
-			WDL.baseProps.setProperty(
-					"MessageGroup." + r.category.internalName,
-					WDL.globalProps.getProperty("MessageGroup."
-							+ r.category.internalName, "true"));
-			WDL.baseProps.setProperty(
-					"Messages." + r.name,
-					WDL.globalProps.getProperty("Messages." + r.name));
-		}
-	}
-
-	/**
-	 * Should be called when the server has changed.
-	 */
-	public static void onNewServer() {
-		if (!WDL.baseProps.containsKey("Messages.enableAll")) {
-			if (WDL.baseProps.containsKey("Debug.globalDebugEnabled")) {
-				//Port from old version.
-				WDL.baseProps.put("Messages.enableAll",
-						WDL.baseProps.remove("Debug.globalDebugEnabled"));
-			} else {
-				WDL.baseProps.setProperty("Messages.enableAll",
-						WDL.globalProps.getProperty("Messages.enableAll", "true"));
-			}
-		}
-
-		enableAllMessages = WDL.baseProps.getProperty("Messages.enableAll")
-				.equals("true");
+	public static ListMultimap<MessageTypeCategory, MessageRegistration> getRegistrations() {
+		return ImmutableListMultimap.copyOf(registrations);
 	}
 
 	/**
 	 * Prints the given message into the chat.
-	 * 
+	 *
+	 * @param config Configuration to use to check if a message is enabled
 	 * @param type The type of the message.
 	 * @param message The message to display.
 	 */
-	public static void chatMessage(@Nonnull IWDLMessageType type, @Nonnull String message) {
-		chatMessage(type, new TextComponentString(message));
+	public static void chatMessage(@Nonnull IConfiguration config,
+			@Nonnull IWDLMessageType type, @Nonnull String message) {
+		chatMessage(config, type, new TextComponentString(message));
 	}
 
 	/**
 	 * Prints a translated chat message into the chat.
-	 * 
+	 *
+	 * @param config
+	 *            Configuration to use to check if a message is enabled
 	 * @param type
 	 *            The type of the message.
 	 * @param translationKey
@@ -307,9 +211,9 @@ public class WDLMessages {
 	 *            will be converted properly with a tooltip like the one
 	 *            generated by {@link Entity#getDisplayName()}.
 	 */
-	public static void chatMessageTranslated(@Nonnull IWDLMessageType type,
-			@Nonnull String translationKey, @Nonnull Object... args) {
-		List<Throwable> exceptionsToPrint = new ArrayList<Throwable>();
+	public static void chatMessageTranslated(@Nonnull IConfiguration config,
+			@Nonnull IWDLMessageType type, @Nonnull String translationKey, @Nonnull Object... args) {
+		List<Throwable> exceptionsToPrint = new ArrayList<>();
 
 		for (int i = 0; i < args.length; i++) {
 			if (args[i] == null) {
@@ -325,23 +229,59 @@ public class WDLMessages {
 
 				args[i] = convertThrowableToComponent(t);
 				exceptionsToPrint.add(t);
+			} else if (args[i] instanceof BlockPos) {
+				// Manually toString BlockPos instances to deal with obfuscation
+				BlockPos pos = (BlockPos) args[i];
+				args[i] = String.format("Pos[x=%d, y=%d, z=%d]", pos.getX(), pos.getY(), pos.getZ());
 			}
 		}
 
-		chatMessage(type, new TextComponentTranslation(translationKey, args));
+		final ITextComponent component;
+		if (I18n.hasKey(translationKey)) {
+			component = new TextComponentTranslation(translationKey, args);
+		} else {
+			// Oh boy, no translation text.  Manually apply parameters.
+			String message = translationKey;
+			component = new TextComponentString(message);
+			component.appendText("[");
+			for (int i = 0; i < args.length; i++) {
+				if (args[i] instanceof ITextComponent) {
+					component.appendSibling((ITextComponent) args[i]);
+				} else {
+					component.appendText(String.valueOf(args[i]));
+				}
+				if (i != args.length - 1) {
+					component.appendText(", ");
+				}
+			}
+			component.appendText("]");
+		}
+
+		chatMessage(config, type, component);
 
 		for (int i = 0; i < exceptionsToPrint.size(); i++) {
-			logger.warn("Exception #" + (i + 1) + ": ", exceptionsToPrint.get(i));
+			LOGGER.warn("Exception #" + (i + 1) + ": ", exceptionsToPrint.get(i));
 		}
 	}
 
 	/**
 	 * Prints the given message into the chat.
-	 * 
+	 *
+	 * @param config Configuration to use to check if a message is enabled
 	 * @param type The type of the message.
 	 * @param message The message to display.
 	 */
-	public static void chatMessage(@Nonnull IWDLMessageType type, @Nonnull ITextComponent message) {
+	public static void chatMessage(@Nonnull IConfiguration config,
+			@Nonnull IWDLMessageType type, @Nonnull ITextComponent message) {
+		boolean enabled;
+		try {
+			MessageRegistration registration = getRegistration(type);
+			enabled = config.getValue(registration.setting);
+		} catch (Exception ex) {
+			enabled = false;
+			LOGGER.error("Failed to check if type was enabled: " + type, ex);
+		}
+
 		// Can't use a TextComponentTranslation here because it doesn't like new lines.
 		String tooltipText = I18n.format("wdl.messages.tooltip",
 				type.getDisplayName()).replace("\r", "");
@@ -362,11 +302,11 @@ public class WDLMessages {
 		messageFormat.appendSibling(message);
 		text.appendSibling(header);
 		text.appendSibling(messageFormat);
-		if (isEnabled(type)) {
+		if (enabled) {
 			Minecraft.getMinecraft().ingameGUI.getChatGUI().printChatMessage(
 					text);
 		} else {
-			logger.info(text.getUnformattedText());
+			LOGGER.info(text.getUnformattedText());
 		}
 	}
 
@@ -392,13 +332,13 @@ public class WDLMessages {
 				wdlName.getStyle().setHoverEvent(new HoverEvent(Action.SHOW_TEXT, hoverText));
 			}
 		} catch (Exception ex) {
-			logger.warn("[WDL] Exception in entity name!", ex);
+			LOGGER.warn("[WDL] Exception in entity name!", ex);
 			wdlName = convertThrowableToComponent(ex);
 		}
 		try {
 			displayName = e.getDisplayName();
 		} catch (Exception ex) {
-			logger.warn("[WDL] Exception in entity display name!", ex);
+			LOGGER.warn("[WDL] Exception in entity display name!", ex);
 			displayName = convertThrowableToComponent(ex);
 		}
 
@@ -423,5 +363,11 @@ public class WDLMessages {
 		component.getStyle().setHoverEvent(event);
 
 		return component;
+	}
+
+	static {
+		for (WDLMessageTypes type : WDLMessageTypes.values()) {
+			registerMessage(type.name(), type, type.category);
+		}
 	}
 }

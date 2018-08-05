@@ -1,24 +1,40 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.client.audio.PositionedSoundRecord;
-import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiListExtended;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.init.SoundEvents;
 import wdl.VersionConstants;
 import wdl.WDL;
+import wdl.gui.widget.Button;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.GuiList;
+import wdl.gui.widget.GuiList.GuiListEntry;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.TextList;
 import wdl.update.Release;
 import wdl.update.WDLUpdateChecker;
 
 /**
  * Gui that lists updates fetched via {@link wdl.update.GithubInfoGrabber}.
  */
-public class GuiWDLUpdates extends GuiScreen {
+public class GuiWDLUpdates extends Screen {
 	private final GuiScreen parent;
 
 	/**
@@ -26,16 +42,15 @@ public class GuiWDLUpdates extends GuiScreen {
 	 */
 	private static final int TOP_MARGIN = 39, BOTTOM_MARGIN = 32;
 
-	private class UpdateList extends GuiListExtended {
+	private class UpdateList extends GuiList<UpdateList.VersionEntry> {
 		public UpdateList() {
 			super(GuiWDLUpdates.this.mc, GuiWDLUpdates.this.width,
 					GuiWDLUpdates.this.height, TOP_MARGIN,
-					GuiWDLUpdates.this.height - BOTTOM_MARGIN, 
+					GuiWDLUpdates.this.height - BOTTOM_MARGIN,
 					(fontRenderer.FONT_HEIGHT + 1) * 6 + 2);
-			this.showSelectionBox = true;
 		}
 
-		private class VersionEntry extends GuiListEntry {
+		private class VersionEntry extends GuiListEntry<VersionEntry> {
 			private final Release release;
 
 			private String title;
@@ -46,6 +61,7 @@ public class GuiWDLUpdates extends GuiScreen {
 			private String time;
 
 			private final int fontHeight;
+			private int y;
 
 			public VersionEntry(Release release) {
 				this.release = release;
@@ -64,11 +80,13 @@ public class GuiWDLUpdates extends GuiScreen {
 			}
 
 			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
+			public void drawEntry(int x, int y, int entryWidth, int entryHeight,
+					int mouseX, int mouseY) {
+				this.y = y;
+
 				String title;
 				//The 'isSelected' parameter is actually 'isMouseOver'
-				if (isSelected(slotIndex)) {
+				if (this.isSelected()) {
 					title = I18n.format("wdl.gui.updates.currentVersion",
 							this.title);
 				} else if (this.release == recomendedRelease) {
@@ -85,17 +103,16 @@ public class GuiWDLUpdates extends GuiScreen {
 				fontRenderer.drawString(body3, x, y + fontHeight * 4, 0xFFFFFF);
 				fontRenderer.drawString(time, x, y + fontHeight * 5, 0x808080);
 
-				if (mouseX > x && mouseX < x + listWidth && mouseY > y
+				if (mouseX > x && mouseX < x + entryWidth && mouseY > y
 						&& mouseY < y + slotHeight) {
-					drawRect(x - 2, y - 2, x + listWidth - 3, y + slotHeight + 2,
+					drawRect(x - 2, y - 2, x + entryWidth - 3, y + slotHeight + 2,
 							0x1FFFFFFF);
 				}
 			}
 
 			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (relativeY > 0 && relativeY < slotHeight) {
+			public boolean mouseDown(int x, int y, int mouseButton) {
+				if (y > this.y && y < this.y + slotHeight) {
 					mc.displayGuiScreen(new GuiWDLSingleUpdate(GuiWDLUpdates.this,
 							this.release));
 
@@ -108,13 +125,15 @@ public class GuiWDLUpdates extends GuiScreen {
 			}
 
 			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
+			public void mouseUp(int x, int y, int mouseButton) { }
 
+			@Override
+			public boolean isSelected() {
+				String currentTag = "v" + VersionConstants.getModVersion();
+				return currentTag.equals(this.release.tag);
 			}
 		}
 
-		private List<VersionEntry> displayedVersions;
 		/**
 		 * Release that should be used.
 		 */
@@ -122,12 +141,12 @@ public class GuiWDLUpdates extends GuiScreen {
 
 		/**
 		 * Regenerates the {@linkplain #displayedVersions version list}.
-		 * 
+		 *
 		 * TODO: This is probably a bit laggy; cache this data?  Right now it's
 		 * being called each frame.
 		 */
 		private void regenerateVersionList() {
-			displayedVersions = new ArrayList<VersionEntry>();
+			getEntries().clear();
 
 			if (WDLUpdateChecker.hasNewVersion()) {
 				recomendedRelease = WDLUpdateChecker.getRecomendedRelease();
@@ -141,36 +160,16 @@ public class GuiWDLUpdates extends GuiScreen {
 				return;
 			}
 
-			for (Release release : releases) {
-				displayedVersions.add(new VersionEntry(release));
-			}
+			releases.stream().map(VersionEntry::new).forEachOrdered(getEntries()::add);
 		}
 
 		@Override
-		public VersionEntry getListEntry(int index) {
-			return displayedVersions.get(index);
-		}
-
-		@Override
-		protected int getSize() {
-			return displayedVersions.size();
-		}
-
-		@Override
-		protected boolean isSelected(int slotIndex) {
-			VersionEntry entry = getListEntry(slotIndex);
-
-			String currentTag = "v" + VersionConstants.getModVersion();
-			return currentTag.equals(entry.release.tag);
-		}
-
-		@Override
-		public int getListWidth() {
+		public int getEntryWidth() {
 			return width - 30;
 		}
 
 		@Override
-		protected int getScrollBarX() {
+		public int getScrollBarX() {
 			return width - 10;
 		}
 	}
@@ -184,16 +183,10 @@ public class GuiWDLUpdates extends GuiScreen {
 	@Override
 	public void initGui() {
 		this.list = new UpdateList();
+		this.addList(this.list);
 
-		this.buttonList.add(new GuiButton(100, this.width / 2 - 100, 
-				this.height - 29, I18n.format("gui.done")));
-	}
-
-	@Override
-	protected void actionPerformed(GuiButton button) throws IOException {
-		if (button.id == 100) {
-			mc.displayGuiScreen(parent);
-		}
+		this.buttonList.add(new ButtonDisplayGui(this.width / 2 - 100, this.height - 29,
+				200, 20, this.parent));
 	}
 
 	@Override
@@ -201,41 +194,11 @@ public class GuiWDLUpdates extends GuiScreen {
 		WDL.saveGlobalProps();
 	}
 
-	/**
-	 * Called when the mouse is clicked.
-	 */
-	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-			throws IOException {
-		list.mouseClicked(mouseX, mouseY, mouseButton);
-		super.mouseClicked(mouseX, mouseY, mouseButton);
-	}
-
-	/**
-	 * Handles mouse input.
-	 */
-	@Override
-	public void handleMouseInput() throws IOException {
-		super.handleMouseInput();
-		this.list.handleMouseInput();
-	}
-
-	@Override
-	protected void mouseReleased(int mouseX, int mouseY, int state) {
-		if (list.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		super.mouseReleased(mouseX, mouseY, state);
-	}
-
 	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-		if (this.list == null) {
-			return;
-		}
-
 		this.list.regenerateVersionList();
-		this.list.drawScreen(mouseX, mouseY, partialTicks);
+
+		super.drawScreen(mouseX, mouseY, partialTicks);
 
 		if (!WDLUpdateChecker.hasFinishedUpdateCheck()) {
 			drawCenteredString(fontRenderer,
@@ -253,8 +216,6 @@ public class GuiWDLUpdates extends GuiScreen {
 
 		drawCenteredString(fontRenderer, I18n.format("wdl.gui.updates.title"),
 				width / 2, 8, 0xFFFFFF);
-
-		super.drawScreen(mouseX, mouseY, partialTicks);
 	}
 
 	/**
@@ -327,11 +288,9 @@ public class GuiWDLUpdates extends GuiScreen {
 	/**
 	 * Gui that shows a single update.
 	 */
-	private class GuiWDLSingleUpdate extends GuiScreen {
+	private class GuiWDLSingleUpdate extends Screen {
 		private final GuiWDLUpdates parent;
 		private final Release release;
-
-		private TextList list;
 
 		public GuiWDLSingleUpdate(GuiWDLUpdates parent, Release releaseToShow) {
 			this.parent = parent;
@@ -340,76 +299,40 @@ public class GuiWDLUpdates extends GuiScreen {
 
 		@Override
 		public void initGui() {
-			this.buttonList.add(new GuiButton(0, this.width / 2 - 155, 
-					18, 150, 20, I18n.format("wdl.gui.updates.update.viewOnline")));
+			this.buttonList.add(new Button(this.width / 2 - 155,
+					18, 150, 20, I18n.format("wdl.gui.updates.update.viewOnline")) {
+				public @Override void performAction() {
+					Utils.openLink(release.URL);
+				}
+			});
 			if (release.hiddenInfo != null) {
-				this.buttonList.add(new GuiButton(1, this.width / 2 + 5, 
-						18, 150, 20, I18n.format("wdl.gui.updates.update.viewForumPost")));
+				this.buttonList.add(new Button(this.width / 2 + 5,
+						18, 150, 20, I18n.format("wdl.gui.updates.update.viewForumPost")) {
+					public @Override void performAction() {
+						Utils.openLink(release.hiddenInfo.post);
+					}
+				});
 			}
-			this.buttonList.add(new GuiButton(100, this.width / 2 - 100, 
-					this.height - 29, I18n.format("gui.done")));
+			this.buttonList.add(new ButtonDisplayGui(this.width / 2 - 100, this.height - 29,
+					200, 20, this.parent));
 
-			this.list = new TextList(mc, width, height, TOP_MARGIN, BOTTOM_MARGIN);
+			TextList list = new TextList(mc, width, height, TOP_MARGIN, BOTTOM_MARGIN);
 
 			list.addLine(buildReleaseTitle(release));
 			list.addLine(I18n.format("wdl.gui.updates.update.releaseDate", release.date));
 			list.addLine(buildVersionInfo(release));
 			list.addBlankLine();
 			list.addLine(release.textOnlyBody);
-		}
 
-		@Override
-		protected void actionPerformed(GuiButton button) throws IOException {
-			if (button.id == 0) {
-				Utils.openLink(release.URL);
-			}
-			if (button.id == 1) {
-				Utils.openLink(release.hiddenInfo.post);
-			}
-			if (button.id == 100) {
-				mc.displayGuiScreen(parent);
-			}
-		}
-
-		/**
-		 * Called when the mouse is clicked.
-		 */
-		@Override
-		protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-				throws IOException {
-			list.mouseClicked(mouseX, mouseY, mouseButton);
-			super.mouseClicked(mouseX, mouseY, mouseButton);
-		}
-
-		/**
-		 * Handles mouse input.
-		 */
-		@Override
-		public void handleMouseInput() throws IOException {
-			super.handleMouseInput();
-			this.list.handleMouseInput();
-		}
-
-		@Override
-		protected void mouseReleased(int mouseX, int mouseY, int state) {
-			if (list.mouseReleased(mouseX, mouseY, state)) {
-				return;
-			}
-			super.mouseReleased(mouseX, mouseY, state);
+			this.addList(list);
 		}
 
 		@Override
 		public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-			if (this.list == null) {
-				return;
-			}
-
-			this.list.drawScreen(mouseX, mouseY, partialTicks);
+			super.drawScreen(mouseX, mouseY, partialTicks);
 
 			this.drawCenteredString(this.fontRenderer, buildReleaseTitle(release),
 					this.width / 2, 8, 0xFFFFFF);
-
-			super.drawScreen(mouseX, mouseY, partialTicks);
 		}
 	}
 }

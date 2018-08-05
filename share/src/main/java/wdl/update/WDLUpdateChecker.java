@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.update;
 
 import java.util.Arrays;
@@ -16,6 +30,7 @@ import wdl.VersionConstants;
 import wdl.WDL;
 import wdl.WDLMessageTypes;
 import wdl.WDLMessages;
+import wdl.config.settings.MiscSettings;
 import wdl.update.Release.HashData;
 
 /**
@@ -48,7 +63,7 @@ public class WDLUpdateChecker extends Thread {
 
 	/**
 	 * The release that is currently running.
-	 * 
+	 *
 	 * May be null.
 	 */
 	@Nullable
@@ -113,7 +128,7 @@ public class WDLUpdateChecker extends Thread {
 	 */
 	public static boolean hasNewVersion() {
 		if (releases == null || releases.isEmpty()) {
-			// Hasn't finished running yet. 
+			// Hasn't finished running yet.
 			return false;
 		}
 		Release recomendedRelease = getRecomendedRelease();
@@ -160,6 +175,7 @@ public class WDLUpdateChecker extends Thread {
 	private static final String FORUMS_THREAD_USAGE_LINK = "http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465#Usage";
 	private static final String WIKI_LINK = "https://github.com/pokechu22/WorldDownloader/wiki";
 	private static final String GITHUB_LINK = "https://github.com/pokechu22/WorldDownloader";
+	private static final String GITHUB_ISSUES_LINK = "https://github.com/pokechu22/WorldDownloader/issues";
 	private static final String REDISTRIBUTION_LINK = "http://pokechu22.github.io/WorldDownloader/redistribution";
 	private static final String SMR_LINK = "http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/mods-discussion/2314237";
 
@@ -170,7 +186,7 @@ public class WDLUpdateChecker extends Thread {
 	@Override
 	public void run() {
 		try {
-			if (!WDL.globalProps.getProperty("TutorialShown").equals("true")) {
+			if (!WDL.globalProps.getValue(MiscSettings.TUTORIAL_SHOWN)) {
 				sleep(5000);
 
 				TextComponentTranslation success = new TextComponentTranslation(
@@ -178,23 +194,23 @@ public class WDLUpdateChecker extends Thread {
 				TextComponentTranslation mcfThread = new TextComponentTranslation(
 						"wdl.intro.forumsLink");
 				mcfThread.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
-						.setClickEvent(new ClickEvent(Action.OPEN_URL, FORUMS_THREAD_USAGE_LINK));
+				.setClickEvent(new ClickEvent(Action.OPEN_URL, FORUMS_THREAD_USAGE_LINK));
 				TextComponentTranslation wikiLink = new TextComponentTranslation(
 						"wdl.intro.wikiLink");
 				wikiLink.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
-						.setClickEvent(new ClickEvent(Action.OPEN_URL, WIKI_LINK));
+				.setClickEvent(new ClickEvent(Action.OPEN_URL, WIKI_LINK));
 				TextComponentTranslation usage = new TextComponentTranslation(
 						"wdl.intro.usage", mcfThread, wikiLink);
 				TextComponentTranslation githubRepo = new TextComponentTranslation(
 						"wdl.intro.githubRepo");
 				githubRepo.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
-						.setClickEvent(new ClickEvent(Action.OPEN_URL, GITHUB_LINK));
+				.setClickEvent(new ClickEvent(Action.OPEN_URL, GITHUB_LINK));
 				TextComponentTranslation contribute = new TextComponentTranslation(
 						"wdl.intro.contribute", githubRepo);
 				TextComponentTranslation redistributionList = new TextComponentTranslation(
 						"wdl.intro.redistributionList");
 				redistributionList.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
-						.setClickEvent(new ClickEvent(Action.OPEN_URL, REDISTRIBUTION_LINK));
+				.setClickEvent(new ClickEvent(Action.OPEN_URL, REDISTRIBUTION_LINK));
 				TextComponentTranslation warning = new TextComponentTranslation(
 						"wdl.intro.warning");
 				warning.getStyle().setColor(TextFormatting.DARK_RED).setBold(true);
@@ -206,25 +222,25 @@ public class WDLUpdateChecker extends Thread {
 				TextComponentTranslation smr = new TextComponentTranslation(
 						"wdl.intro.stopModReposts");
 				smr.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
-						.setClickEvent(new ClickEvent(Action.OPEN_URL, SMR_LINK));
+				.setClickEvent(new ClickEvent(Action.OPEN_URL, SMR_LINK));
 				TextComponentTranslation stolenBeware = new TextComponentTranslation(
 						"wdl.intro.stolenBeware", smr);
 
-				WDLMessages.chatMessage(WDLMessageTypes.UPDATES, success);
-				WDLMessages.chatMessage(WDLMessageTypes.UPDATES, usage);
-				WDLMessages.chatMessage(WDLMessageTypes.UPDATES, contribute);
-				WDLMessages.chatMessage(WDLMessageTypes.UPDATES, stolen);
-				WDLMessages.chatMessage(WDLMessageTypes.UPDATES, stolenBeware);
+				WDLMessages.chatMessage(WDL.baseProps, WDLMessageTypes.UPDATES, success);
+				WDLMessages.chatMessage(WDL.baseProps, WDLMessageTypes.UPDATES, usage);
+				WDLMessages.chatMessage(WDL.baseProps, WDLMessageTypes.UPDATES, contribute);
+				WDLMessages.chatMessage(WDL.baseProps, WDLMessageTypes.UPDATES, stolen);
+				WDLMessages.chatMessage(WDL.baseProps, WDLMessageTypes.UPDATES, stolenBeware);
 
-				WDL.globalProps.setProperty("TutorialShown", "true");
+				WDL.globalProps.setValue(MiscSettings.TUTORIAL_SHOWN, true);
 				WDL.saveGlobalProps();
 			}
 
 			sleep(5000);
 
 			releases = GithubInfoGrabber.getReleases();
-			WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-					"wdl.messages.updates.releaseCount", releases.size());
+			WDLMessages.chatMessageTranslated(WDL.baseProps,
+					WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.releaseCount", releases.size());
 
 			if (releases.isEmpty()) {
 				failed = true;
@@ -244,13 +260,13 @@ public class WDLUpdateChecker extends Thread {
 
 			if (runningRelease == null) {
 				if (!isSnapshot(version)) {
-					WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-							"wdl.messages.updates.failedToFindMatchingRelease",
-							currentTag);
+					WDLMessages.chatMessageTranslated(WDL.baseProps,
+							WDLMessageTypes.UPDATES,
+							"wdl.messages.updates.failedToFindMatchingRelease", currentTag);
 				} else {
-					WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-							"wdl.messages.updates.failedToFindMatchingRelease.snapshot",
-							currentTag, getRealVersion(version));
+					WDLMessages.chatMessageTranslated(WDL.baseProps,
+							WDLMessageTypes.UPDATES,
+							"wdl.messages.updates.failedToFindMatchingRelease.snapshot", currentTag, getRealVersion(version));
 				}
 				// Wait until the new version check finishes before returning.
 			}
@@ -266,9 +282,20 @@ public class WDLUpdateChecker extends Thread {
 								recomendedRelease.URL));
 
 				// Show the new version available message, and give a link.
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATES,
-						"wdl.messages.updates.newRelease", currentTag,
-						recomendedRelease.tag, updateLink);
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATES, "wdl.messages.updates.newRelease",
+						currentTag, recomendedRelease.tag, updateLink);
+			}
+
+			// Next up: Check if the version is untested.
+			if (VersionConstants.isUntestedVersion()) {
+				TextComponentTranslation githubIssues = new TextComponentTranslation(
+						"wdl.intro.githubRepo");
+				githubIssues.getStyle().setColor(TextFormatting.BLUE).setUnderlined(true)
+						.setClickEvent(new ClickEvent(Action.OPEN_URL, GITHUB_ISSUES_LINK));
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATES, "wdl.messages.updates.untestedVersion",
+						VersionConstants.getMinecraftVersion(), githubIssues);
 			}
 
 			if (runningRelease == null) {
@@ -277,13 +304,13 @@ public class WDLUpdateChecker extends Thread {
 			}
 
 			if (runningRelease.hiddenInfo == null) {
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-						"wdl.messages.updates.failedToFindMetadata",
-						currentTag);
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATE_DEBUG,
+						"wdl.messages.updates.failedToFindMetadata", currentTag);
 				return;
 			}
 			//Check the hashes, and list any failing ones.
-			Map<HashData, Object> failed = new HashMap<HashData, Object>();
+			Map<HashData, Object> failed = new HashMap<>();
 
 			hashLoop: for (HashData data : runningRelease.hiddenInfo.hashes) {
 				try {
@@ -298,19 +325,19 @@ public class WDLUpdateChecker extends Thread {
 					}
 
 					WDLMessages.chatMessageTranslated(
-							WDLMessageTypes.UPDATE_DEBUG,
-							"wdl.messages.updates.incorrectHash", data.file,
-							data.relativeTo, Arrays.toString(data.validHashes),
-							hash);
+							WDL.baseProps,
+							WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.incorrectHash",
+							data.file, data.relativeTo,
+							Arrays.toString(data.validHashes), hash);
 
 					failed.put(data, hash);
 					continue;
 				} catch (Exception e) {
 					WDLMessages.chatMessageTranslated(
-							WDLMessageTypes.UPDATE_DEBUG,
-							"wdl.messages.updates.hashException", data.file,
-							data.relativeTo, Arrays.toString(data.validHashes),
-							e);
+							WDL.baseProps,
+							WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.hashException",
+							data.file, data.relativeTo,
+							Arrays.toString(data.validHashes), e);
 
 					failed.put(data, e);
 				}
@@ -323,12 +350,12 @@ public class WDLUpdateChecker extends Thread {
 				.setUnderlined(true).setClickEvent(
 						new ClickEvent(Action.OPEN_URL,
 								FORUMS_THREAD_USAGE_LINK));
-				WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATES,
-						"wdl.messages.updates.badHashesFound", mcfThread);
+				WDLMessages.chatMessageTranslated(WDL.baseProps,
+						WDLMessageTypes.UPDATES, "wdl.messages.updates.badHashesFound", mcfThread);
 			}
 		} catch (Exception e) {
-			WDLMessages.chatMessageTranslated(WDLMessageTypes.UPDATE_DEBUG,
-					"wdl.messages.updates.updateCheckError", e);
+			WDLMessages.chatMessageTranslated(WDL.baseProps,
+					WDLMessageTypes.UPDATE_DEBUG, "wdl.messages.updates.updateCheckError", e);
 
 			failed = true;
 			failReason = e.toString();

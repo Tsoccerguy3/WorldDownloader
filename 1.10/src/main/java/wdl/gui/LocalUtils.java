@@ -1,29 +1,34 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
 import static org.lwjgl.opengl.GL11.*;
-import wdl.WDL;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.gui.Gui;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.GuiListExtended.IGuiListEntry;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.VertexBuffer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import wdl.WDL;
 
-class LocalUtils {
+public class LocalUtils {
 	private static final Minecraft mc = Minecraft.getMinecraft();
 	private LocalUtils() { throw new AssertionError(); }
-
-	/**
-	 * Draws the given button (for multi-version compatability, this is needed for lists)
-	 * @param button The button to draw.  Should already have been positioned.
-	 */
-	public static void drawButton(GuiButton button, Minecraft mc, int mouseX, int mouseY) {
-		button.func_146112_a(mc, mouseX, mouseY);
-	}
 
 	/**
 	 * Creates a new instance of {@link EntityPlayerSP}.
@@ -35,8 +40,8 @@ class LocalUtils {
 
 	/**
 	 * Draws a dark background, similar to {@link GuiScreen#drawBackground(int)} but darker.
-	 * Same appearance as the background in lists. 
-	 * 
+	 * Same appearance as the background in lists.
+	 *
 	 * @param top Where to start drawing (usually, 0)
 	 * @param left Where to start drawing (usually, 0)
 	 * @param bottom Where to stop drawing (usually, height).
@@ -54,25 +59,25 @@ class LocalUtils {
 
 		float textureSize = 32.0F;
 		b.begin(7, DefaultVertexFormats.POSITION_TEX_COLOR);
-		b.pos(0, bottom, 0).tex(0 / textureSize, 
+		b.pos(0, bottom, 0).tex(0 / textureSize,
 				bottom / textureSize).color(32, 32, 32, 255).endVertex();
-		b.pos(right, bottom, 0).tex(right / textureSize, 
+		b.pos(right, bottom, 0).tex(right / textureSize,
 				bottom / textureSize).color(32, 32, 32, 255).endVertex();
-		b.pos(right, top, 0).tex(right / textureSize, 
+		b.pos(right, top, 0).tex(right / textureSize,
 				top / textureSize).color(32, 32, 32, 255).endVertex();
-		b.pos(left, top, 0).tex(left / textureSize, 
+		b.pos(left, top, 0).tex(left / textureSize,
 				top / textureSize).color(32, 32, 32, 255).endVertex();
 		t.draw();
 	}
 
 	/**
 	 * Draws the top and bottom borders found on gui lists (but no background).
-	 * <br/> 
+	 * <br/>
 	 * Based off of
 	 * {@link net.minecraft.client.gui.GuiSlot#overlayBackground(int, int, int, int)}.
-	 * 
+	 *
 	 * Note that there is an additional 4-pixel padding on the margins for the gradient.
-	 * 
+	 *
 	 * @param topMargin Amount of space to give for the upper box.
 	 * @param bottomMargin Amount of space to give for the lower box.
 	 * @param top Where to start drawing (usually, 0)
@@ -159,52 +164,12 @@ class LocalUtils {
 		GlStateManager.enableAlpha();
 		GlStateManager.disableBlend();
 	}
-}
 
-/**
- * Version-agnostic implementation of IGuiListEntry.
- */
-abstract class GuiListEntry implements IGuiListEntry {
-	@Override
-	public void func_178011_a(int p_178011_1_, int p_178011_2_, int p_178011_3_) {
-		setSelected(p_178011_1_, p_178011_2_, p_178011_3_);
-	}
-
-	@Override
-	public void func_180790_a(int p_180790_1_, int p_180790_2_,
-			int p_180790_3_, int p_180790_4_, int p_180790_5_, int p_180790_6_,
-			int p_180790_7_, boolean p_180790_8_) {
-		drawEntry(p_180790_1_, p_180790_2_, p_180790_3_, p_180790_4_, p_180790_5_, p_180790_6_, p_180790_7_, p_180790_8_);
-	}
-
-	public void setSelected(int p_178011_1_, int p_178011_2_, int p_178011_3_) { }
-	public abstract void drawEntry(int slotIndex, int x, int y, int listWidth, int slotHeight, int mouseX, int mouseY, boolean isSelected);
-
-	@Override
-	public abstract boolean mousePressed(int slotIndex, int mouseX, int mouseY, int mouseEvent, int relativeX, int relativeY);
-	@Override
-	public abstract void mouseReleased(int slotIndex, int x, int y, int mouseEvent, int relativeX, int relativeY);
-}
-
-/**
- * Extendable button, to deal with changing method names between versions
- * @author Pokechu22
- *
- */
-abstract class ExtButton extends GuiButton {
-	public ExtButton(int buttonId, int x, int y, int widthIn, int heightIn,
-			String buttonText) {
-		super(buttonId, x, y, widthIn, heightIn, buttonText);
-	}
-
-	public abstract void beforeDraw();
-	public abstract void afterDraw();
-
-	@Override
-	public void func_146112_a(Minecraft mc, int mouseX, int mouseY) {
-		beforeDraw();
-		super.func_146112_a(mc, mouseX, mouseY);
-		afterDraw();
+	/**
+	 * Copies the given text into the system clipboard.
+	 * @param text The text to copy
+	 */
+	public static void setClipboardString(String text) {
+		GuiScreen.setClipboardString(text);
 	}
 }
-

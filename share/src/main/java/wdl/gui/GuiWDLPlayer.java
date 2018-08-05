@@ -1,18 +1,38 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
-
-import java.io.IOException;
 
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
 import wdl.WDL;
+import wdl.config.IConfiguration;
+import wdl.config.settings.PlayerSettings;
+import wdl.gui.widget.Button;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.GuiNumericTextField;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.SettingButton;
 
-public class GuiWDLPlayer extends GuiScreen {
+public class GuiWDLPlayer extends Screen {
 	private String title;
-	private GuiScreen parent;
-	private GuiButton healthBtn;
-	private GuiButton hungerBtn;
-	private GuiButton playerPosBtn;
+	private final GuiScreen parent;
+	private final IConfiguration config;
+	private SettingButton healthBtn;
+	private SettingButton hungerBtn;
+	private SettingButton playerPosBtn;
 	private GuiButton pickPosBtn;
 	private boolean showPosFields = false;
 	private GuiNumericTextField posX;
@@ -20,8 +40,9 @@ public class GuiWDLPlayer extends GuiScreen {
 	private GuiNumericTextField posZ;
 	private int posTextY;
 
-	public GuiWDLPlayer(GuiScreen var1) {
-		this.parent = var1;
+	public GuiWDLPlayer(GuiScreen parent) {
+		this.parent = parent;
+		this.config = WDL.worldProps;
 	}
 
 	/**
@@ -29,18 +50,21 @@ public class GuiWDLPlayer extends GuiScreen {
 	 */
 	@Override
 	public void initGui() {
-		this.buttonList.clear();
 		this.title = I18n.format("wdl.gui.player.title",
 				WDL.baseFolderName.replace('@', ':'));
 		int y = this.height / 4 - 15;
-		this.healthBtn = new GuiButton(1, this.width / 2 - 100, y, getHealthText());
+		this.healthBtn = new SettingButton(PlayerSettings.HEALTH, this.config, this.width / 2 - 100, y);
 		this.buttonList.add(this.healthBtn);
 		y += 22;
-		this.hungerBtn = new GuiButton(2, this.width / 2 - 100, y, getHungerText());
+		this.hungerBtn = new SettingButton(PlayerSettings.HUNGER, this.config, this.width / 2 - 100, y);
 		this.buttonList.add(this.hungerBtn);
 		y += 22;
-		this.playerPosBtn = new GuiButton(3, this.width / 2 - 100, y,
-				getPlayerPosText());
+		this.playerPosBtn = new SettingButton(PlayerSettings.PLAYER_POSITION, this.config, this.width / 2 - 100, y) {
+			public @Override void performAction() {
+				super.performAction();
+				upadatePlayerPosVisibility();
+			}
+		};
 		this.buttonList.add(this.playerPosBtn);
 		y += 22;
 		this.posTextY = y + 4;
@@ -50,91 +74,39 @@ public class GuiWDLPlayer extends GuiScreen {
 				this.width / 2 - 19, y, 50, 16);
 		this.posZ = new GuiNumericTextField(42, this.fontRenderer,
 				this.width / 2 + 48, y, 50, 16);
-		this.posX.setText(WDL.worldProps.getProperty("PlayerX"));
-		this.posY.setText(WDL.worldProps.getProperty("PlayerY"));
-		this.posZ.setText(WDL.worldProps.getProperty("PlayerZ"));
+		this.posX.setValue(config.getValue(PlayerSettings.PLAYER_X));
+		this.posY.setValue(config.getValue(PlayerSettings.PLAYER_Y));
+		this.posZ.setValue(config.getValue(PlayerSettings.PLAYER_Z));
 		this.posX.setMaxStringLength(7);
 		this.posY.setMaxStringLength(7);
 		this.posZ.setMaxStringLength(7);
+		this.addTextField(posX);
+		this.addTextField(posY);
+		this.addTextField(posZ);
 		y += 18;
-		this.pickPosBtn = new GuiButton(4, this.width / 2 - 0, y, 100, 20,
-				I18n.format("wdl.gui.player.setPositionToCurrentPosition"));
-		this.buttonList.add(this.pickPosBtn);
-		
-		upadatePlayerPosVisibility();
-		
-		this.buttonList.add(new GuiButton(100, this.width / 2 - 100,
-				this.height - 29, I18n.format("gui.done")));
-	}
-
-	/**
-	 * Fired when a control is clicked. This is the equivalent of
-	 * ActionListener.actionPerformed(ActionEvent e).
-	 */
-	@Override
-	protected void actionPerformed(GuiButton var1) {
-		if (var1.enabled) {
-			if (var1.id == 1) {
-				this.cycleHealth();
-			} else if (var1.id == 2) {
-				this.cycleHunger();
-			} else if (var1.id == 3) {
-				this.cyclePlayerPos();
-			} else if (var1.id == 4) {
-				this.setPlayerPosToPlayerPosition();
-			} else if (var1.id == 100) {
-				this.mc.displayGuiScreen(this.parent);
+		this.pickPosBtn = new Button(this.width / 2 - 0, y, 100, 20,
+				I18n.format("wdl.gui.player.setPositionToCurrentPosition")) {
+			public @Override void performAction() {
+				setPlayerPosToPlayerPosition();
 			}
-		}
+		};
+		this.buttonList.add(this.pickPosBtn);
+
+		upadatePlayerPosVisibility();
+
+		this.buttonList.add(new ButtonDisplayGui(this.width / 2 - 100, this.height - 29,
+				200, 20, this.parent));
 	}
 
 	@Override
 	public void onGuiClosed() {
 		if (this.showPosFields) {
-			WDL.worldProps.setProperty("PlayerX", posX.getText());
-			WDL.worldProps.setProperty("PlayerY", posY.getText());
-			WDL.worldProps.setProperty("PlayerZ", posZ.getText());
+			this.config.setValue(PlayerSettings.PLAYER_X, posX.getValue());
+			this.config.setValue(PlayerSettings.PLAYER_Y, posY.getValue());
+			this.config.setValue(PlayerSettings.PLAYER_Z, posZ.getValue());
 		}
 
 		WDL.saveProps();
-	}
-	
-	/**
-	 * Called when the mouse is clicked.
-	 */
-	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-	throws IOException {
-		super.mouseClicked(mouseX, mouseY, mouseButton);
-
-		if (this.showPosFields) {
-			this.posX.mouseClicked(mouseX, mouseY, mouseButton);
-			this.posY.mouseClicked(mouseX, mouseY, mouseButton);
-			this.posZ.mouseClicked(mouseX, mouseY, mouseButton);
-		}
-	}
-
-	/**
-	 * Fired when a key is typed. This is the equivalent of
-	 * KeyListener.keyTyped(KeyEvent e).
-	 */
-	@Override
-	protected void keyTyped(char typedChar, int keyCode) throws IOException {
-		super.keyTyped(typedChar, keyCode);
-		this.posX.textboxKeyTyped(typedChar, keyCode);
-		this.posY.textboxKeyTyped(typedChar, keyCode);
-		this.posZ.textboxKeyTyped(typedChar, keyCode);
-	}
-
-	/**
-	 * Called from the main game loop to update the screen.
-	 */
-	@Override
-	public void updateScreen() {
-		this.posX.updateCursorCounter();
-		this.posY.updateCursorCounter();
-		this.posZ.updateCursorCounter();
-		super.updateScreen();
 	}
 
 	/**
@@ -143,10 +115,10 @@ public class GuiWDLPlayer extends GuiScreen {
 	@Override
 	public void drawScreen(int mouseX, int mouseY, float partialTicks) {
 		Utils.drawListBackground(23, 32, 0, 0, height, width);
-		
+
 		this.drawCenteredString(this.fontRenderer, this.title,
 				this.width / 2, 8, 0xFFFFFF);
-		
+
 		String tooltip = null;
 
 		if (this.showPosFields) {
@@ -156,10 +128,7 @@ public class GuiWDLPlayer extends GuiScreen {
 					this.posTextY, 0xFFFFFF);
 			this.drawString(this.fontRenderer, "Z:", this.width / 2 + 37,
 					this.posTextY, 0xFFFFFF);
-			this.posX.drawTextBox();
-			this.posY.drawTextBox();
-			this.posZ.drawTextBox();
-			
+
 			if (Utils.isMouseOverTextBox(mouseX, mouseY, posX)) {
 				tooltip = I18n.format("wdl.gui.player.positionTextBox.description", "X");
 			} else if (Utils.isMouseOverTextBox(mouseX, mouseY, posY)) {
@@ -167,106 +136,39 @@ public class GuiWDLPlayer extends GuiScreen {
 			} else if (Utils.isMouseOverTextBox(mouseX, mouseY, posZ)) {
 				tooltip = I18n.format("wdl.gui.player.positionTextBox.description", "Z");
 			}
-			
+
 			if (pickPosBtn.isMouseOver()) {
 				tooltip = I18n.format("wdl.gui.player.setPositionToCurrentPosition.description");
 			}
 		}
-		
+
 		if (healthBtn.isMouseOver()) {
-			tooltip = I18n.format("wdl.gui.player.health.description");
+			tooltip = healthBtn.getTooltip();
 		}
 		if (hungerBtn.isMouseOver()) {
-			tooltip = I18n.format("wdl.gui.player.hunger.description");
+			tooltip = hungerBtn.getTooltip();
 		}
 		if (playerPosBtn.isMouseOver()) {
-			tooltip = I18n.format("wdl.gui.player.position.description");
+			tooltip = playerPosBtn.getTooltip();
 		}
 
 		super.drawScreen(mouseX, mouseY, partialTicks);
-		
+
 		if (tooltip != null) {
 			Utils.drawGuiInfoBox(tooltip, width, height, 48);
 		}
 	}
 
-	private void cycleHealth() {
-		String prop = WDL.baseProps.getProperty("PlayerHealth");
-
-		if (prop.equals("keep")) {
-			WDL.baseProps.setProperty("PlayerHealth", "20");
-		} else if (prop.equals("20")) {
-			WDL.baseProps.setProperty("PlayerHealth", "keep");
-		}
-		
-		this.healthBtn.displayString = getHealthText();
-	}
-
-	private void cycleHunger() {
-		String prop = WDL.baseProps.getProperty("PlayerFood");
-
-		if (prop.equals("keep")) {
-			WDL.baseProps.setProperty("PlayerFood", "20");
-		} else if (prop.equals("20")) {
-			WDL.baseProps.setProperty("PlayerFood", "keep");
-		}
-		
-		this.hungerBtn.displayString = getHungerText();
-	}
-
-	private void cyclePlayerPos() {
-		String prop = WDL.worldProps.getProperty("PlayerPos");
-		
-		if (prop.equals("keep")) {
-			WDL.worldProps.setProperty("PlayerPos", "xyz");
-		} else if (prop.equals("xyz")) {
-			WDL.worldProps.setProperty("PlayerPos", "keep");
-		}
-		
-		playerPosBtn.displayString = getPlayerPosText();
-		upadatePlayerPosVisibility();
-	}
-	
-	private String getHealthText() {
-		String result = I18n.format("wdl.gui.player.health."
-				+ WDL.baseProps.getProperty("PlayerHealth"));
-		
-		if (result.startsWith("wdl.gui.player.health.")) {
-			// Unrecognized hunger -- not translated
-			// Only done with time because time can have a value that
-			// isn't on the normal list but still can be parsed
-			result = I18n.format("wdl.gui.player.health.custom",
-					WDL.baseProps.getProperty("PlayerHealth"));
-		}
-		
-		return result;
-	}
-	
-	private String getHungerText() {
-		String result = I18n.format("wdl.gui.player.hunger."
-				+ WDL.baseProps.getProperty("PlayerFood"));
-		
-		if (result.startsWith("wdl.gui.player.hunger.")) {
-			// Unrecognized hunger -- not translated
-			// Only done with time because time can have a value that
-			// isn't on the normal list but still can be parsed
-			result = I18n.format("wdl.gui.player.hunger.custom",
-					WDL.baseProps.getProperty("PlayerFood"));
-		}
-		
-		return result;
-	}
-	
 	private void upadatePlayerPosVisibility() {
-		showPosFields = WDL.worldProps.getProperty("PlayerPos").equals("xyz");
+		boolean show = config.getValue(PlayerSettings.PLAYER_POSITION) == PlayerSettings.PlayerPos.XYZ;;
+
+		showPosFields = show;
+		posX.setVisible(show);
+		posY.setVisible(show);
+		posZ.setVisible(show);
 		pickPosBtn.visible = showPosFields;
 	}
 
-	private String getPlayerPosText() {
-		return I18n.format("wdl.gui.player.position."
-				+ WDL.worldProps.getProperty("PlayerPos"));
-	}
-	
 	private void setPlayerPosToPlayerPosition() {
 		this.posX.setValue((int)WDL.thePlayer.posX);
 		this.posY.setValue((int)WDL.thePlayer.posY);

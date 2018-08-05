@@ -1,33 +1,49 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl.gui;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import javax.annotation.Nullable;
 
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiListExtended;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.util.text.TextFormatting;
 import wdl.api.IWDLModWithGui;
 import wdl.api.WDLApi;
 import wdl.api.WDLApi.ModInfo;
+import wdl.gui.widget.Button;
+import wdl.gui.widget.ButtonDisplayGui;
+import wdl.gui.widget.GuiList;
+import wdl.gui.widget.GuiList.GuiListEntry;
+import wdl.gui.widget.Screen;
+import wdl.gui.widget.TextList;
 
 /**
  * GUI showing the currently enabled mods, and their information.
- * 
+ *
  * It's composed of two halves, one that lists enabled extensions that can
  * be clicked, and the other that shows the details on the selected extension.
  * The two halves can be dragged up and down (which is why the logic is so
  * complex here; {@link GuiListExtended} was not designed for that).
- * 
+ *
  * @author Pokechu22
  */
-public class GuiWDLExtensions extends GuiScreen {
+public class GuiWDLExtensions extends Screen {
 	/**
 	 * Top of the bottom list.
 	 */
@@ -39,7 +55,7 @@ public class GuiWDLExtensions extends GuiScreen {
 	private static final int TOP_HEIGHT = 23;
 	/**
 	 * Height of the middle section.
-	 * 
+	 *
 	 * Equal to <code>{@link FontRenderer#FONT_HEIGHT} + 10</code>.
 	 */
 	private static final int MIDDLE_HEIGHT = 19;
@@ -48,19 +64,17 @@ public class GuiWDLExtensions extends GuiScreen {
 	 */
 	private static final int BOTTOM_HEIGHT = 32;
 
-	/**
-	 * The currently selected mod.
-	 */
-	private int selectedModIndex = -1;
-
-	private class ModList extends GuiListExtended {
+	private class ModList extends GuiList<ModList.ModEntry> {
 		public ModList() {
 			super(GuiWDLExtensions.this.mc, GuiWDLExtensions.this.width,
 					bottomLocation, TOP_HEIGHT, bottomLocation, 22);
 			this.showSelectionBox = true;
 		}
 
-		private class ModEntry extends GuiListEntry {
+		@Nullable
+		private ModEntry selectedEntry;
+
+		private class ModEntry extends GuiListEntry<ModEntry> {
 			public final ModInfo<?> mod;
 			/**
 			 * Constant information about the extension (name & version)
@@ -71,8 +85,6 @@ public class GuiWDLExtensions extends GuiScreen {
 			 * the mod is enabled.
 			 */
 			private String label;
-			private GuiButton button;
-			private GuiButton disableButton;
 
 			public ModEntry(ModInfo<?> mod) {
 				this.mod = mod;
@@ -94,65 +106,47 @@ public class GuiWDLExtensions extends GuiScreen {
 						buttonName = I18n.format("wdl.gui.extensions.defaultSettingsButtonText");
 					}
 
-					button = new GuiButton(0, 0, 0, 80, 20,
-							guiMod.getButtonName());
-				}
-
-				disableButton = new GuiButton(0, 0, 0, 80, 20,
-						I18n.format("wdl.gui.extensions."
-								+ (mod.isEnabled() ? "enabled" : "disabled")));
-			}
-
-			@Override
-			public void drawEntry(int slotIndex, int x, int y, int listWidth,
-					int slotHeight, int mouseX, int mouseY, boolean isSelected) {
-				if (button != null) {
-					button.x = GuiWDLExtensions.this.width - 180;
-					button.y = y - 1;
-
-					LocalUtils.drawButton(button, mc, mouseX, mouseY);
-				}
-
-				disableButton.x = GuiWDLExtensions.this.width - 92;
-				disableButton.y = y - 1;
-				LocalUtils.drawButton(disableButton, mc, mouseX, mouseY);
-
-				int centerY = y + slotHeight / 2
-						- fontRenderer.FONT_HEIGHT / 2;
-				fontRenderer.drawString(label, x, centerY, 0xFFFFFF);
-			}
-
-			@Override
-			public boolean mousePressed(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (button != null) {
-					if (button.mousePressed(mc, x, y)) {
-						if (mod.mod instanceof IWDLModWithGui) {
-							((IWDLModWithGui) mod.mod).openGui(GuiWDLExtensions.this);
+					Button button = new Button(0, 0, 80, 20, guiMod.getButtonName()) {
+						public @Override void performAction() {
+							if (mod.mod instanceof IWDLModWithGui) {
+								((IWDLModWithGui) mod.mod).openGui(GuiWDLExtensions.this);
+							}
 						}
+					};
 
-						button.playPressSound(mc.getSoundHandler());
-						return true;
-					}
+					addButton(button, (GuiWDLExtensions.this.width / 2) - 180, -1);
 				}
-				if (disableButton.mousePressed(mc, x, y)) {
-					mod.toggleEnabled();
 
-					disableButton.playPressSound(mc.getSoundHandler());
-					disableButton.displayString = I18n.format("wdl.gui.extensions."
-							+ (mod.isEnabled() ? "enabled" : "disabled"));
+				Button disableButton = new Button(0, 0, 80, 20,
+						I18n.format("wdl.gui.extensions."
+								+ (mod.isEnabled() ? "enabled" : "disabled"))) {
+					public @Override void performAction() {
+						mod.toggleEnabled();
 
-					if (!mod.isEnabled()) {
-						this.label = "" + TextFormatting.GRAY
-								+ TextFormatting.ITALIC + modDescription;
-					} else {
-						this.label = modDescription;
+						this.displayString = I18n.format("wdl.gui.extensions."
+								+ (mod.isEnabled() ? "enabled" : "disabled"));
+
+						if (!mod.isEnabled()) {
+							label = "" + TextFormatting.GRAY
+									+ TextFormatting.ITALIC + modDescription;
+						} else {
+							label = modDescription;
+						}
 					}
+				};
+
+				addButton(disableButton, (GuiWDLExtensions.this.width / 2) - 92, -1);
+			}
+
+			@Override
+			public boolean mouseDown(int mouseX, int mouseY, int mouseButton) {
+				if (super.mouseDown(mouseX, mouseY, mouseButton)) {
 					return true;
 				}
 
-				if (selectedModIndex != slotIndex) {
-					selectedModIndex = slotIndex;
+				// A click, but not on a button
+				if (selectedEntry != this) {
+					selectedEntry = this;
 
 					mc.getSoundHandler().playSound(
 							PositionedSoundRecord.getMasterRecord(
@@ -167,19 +161,24 @@ public class GuiWDLExtensions extends GuiScreen {
 			}
 
 			@Override
-			public void mouseReleased(int slotIndex, int x, int y,
-					int mouseEvent, int relativeX, int relativeY) {
-				if (button != null) {
-					button.mouseReleased(x, y);
-				}
+			public void drawEntry(int x, int y, int width, int height, int mouseX, int mouseY) {
+				super.drawEntry(x, y, width, height, mouseX, mouseY);
+
+				int centerY = y + height / 2 - fontRenderer.FONT_HEIGHT / 2;
+				fontRenderer.drawString(label, x, centerY, 0xFFFFFF);
+			}
+
+			@Override
+			public boolean isSelected() {
+				return selectedEntry == this;
 			}
 		}
 
-		private List<GuiListEntry> entries = new ArrayList<GuiListEntry>() {{
-			for (ModInfo<?> mod : WDLApi.getWDLMods().values()) {
-				add(new ModEntry(mod));
-			}
-		}};
+		{
+			WDLApi.getWDLMods().values().stream()
+					.map(ModEntry::new)
+					.forEach(this.getEntries()::add);
+		}
 
 		@Override
 		public void drawScreen(int mouseX, int mouseY, float partialTicks) {
@@ -189,35 +188,13 @@ public class GuiWDLExtensions extends GuiScreen {
 		}
 
 		@Override
-		public IGuiListEntry getListEntry(int index) {
-			return entries.get(index);
-		}
-
-		@Override
-		protected int getSize() {
-			return entries.size();
-		}
-
-		@Override
-		protected boolean isSelected(int slotIndex) {
-			return slotIndex == selectedModIndex;
-		}
-
-		@Override
-		public int getListWidth() {
+		public int getEntryWidth() {
 			return GuiWDLExtensions.this.width - 20;
 		}
 
 		@Override
-		protected int getScrollBarX() {
+		public int getScrollBarX() {
 			return GuiWDLExtensions.this.width - 10;
-		}
-
-		@Override
-		public void handleMouseInput() {
-			if (mouseY < bottomLocation) {
-				super.handleMouseInput();
-			}
 		}
 	}
 
@@ -230,8 +207,7 @@ public class GuiWDLExtensions extends GuiScreen {
 
 		@Override
 		public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-			GlStateManager.translate(0, bottomLocation, 0);
-
+			this.setY(bottomLocation);
 			this.height = GuiWDLExtensions.this.height - bottomLocation;
 			this.bottom = this.height - 32;
 
@@ -239,41 +215,7 @@ public class GuiWDLExtensions extends GuiScreen {
 
 			drawCenteredString(fontRenderer,
 					I18n.format("wdl.gui.extensions.detailsCaption"),
-					GuiWDLExtensions.this.width / 2, 5, 0xFFFFFF);
-
-			GlStateManager.translate(0, -bottomLocation, 0);
-		}
-
-		/**
-		 * Used by the drawing routine; edited to reduce weirdness.
-		 * 
-		 * (Don't move the bottom with the size of the screen).
-		 */
-		@Override
-		protected void overlayBackground(int y1, int y2,
-				int alpha1, int alpha2) {
-			if (y1 == 0) {
-				super.overlayBackground(y1, y2, alpha1, alpha2);
-				return;
-			} else {
-				GlStateManager.translate(0, -bottomLocation, 0);
-
-				super.overlayBackground(y1 + bottomLocation, y2
-						+ bottomLocation, alpha1, alpha2);
-
-				GlStateManager.translate(0, bottomLocation, 0);
-			}
-		}
-
-		@Override
-		public void handleMouseInput() {
-			mouseY -= bottomLocation;
-
-			if (mouseY > 0) {
-				super.handleMouseInput();
-			}
-
-			mouseY += bottomLocation;
+					GuiWDLExtensions.this.width / 2, bottomLocation + 5, 0xFFFFFF);
 		}
 	}
 
@@ -311,16 +253,11 @@ public class GuiWDLExtensions extends GuiScreen {
 
 		this.list = new ModList();
 		this.detailsList = new ModDetailList();
+		this.addList(this.list);
+		this.addList(this.detailsList);
 
-		this.buttonList.add(new GuiButton(0, width / 2 - 100, height - 29, I18n
-				.format("gui.done")));
-	}
-
-	@Override
-	protected void actionPerformed(GuiButton button) throws IOException {
-		if (button.id == 0) {
-			mc.displayGuiScreen(parent);
-		}
+		this.buttonList.add(new ButtonDisplayGui(width / 2 - 100, height - 29,
+				200, 20, this.parent));
 	}
 
 	/**
@@ -329,53 +266,24 @@ public class GuiWDLExtensions extends GuiScreen {
 	private boolean dragging = false;
 	private int dragOffset;
 
-	/**
-	 * Handles mouse input.
-	 */
 	@Override
-	public void handleMouseInput() throws IOException {
-		super.handleMouseInput();
-		this.list.handleMouseInput();
-		this.detailsList.handleMouseInput();
-	}
-
-	@Override
-	protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
-			throws IOException {
+	public void mouseDown(int mouseX, int mouseY) {
 		if (mouseY > bottomLocation && mouseY < bottomLocation + MIDDLE_HEIGHT) {
 			dragging = true;
 			dragOffset = mouseY - bottomLocation;
-
-			return;
+			// return true?
 		}
-
-		if (list.mouseClicked(mouseX, mouseY, mouseButton)) {
-			return;
-		}
-		if (detailsList.mouseClicked(mouseX, mouseY, mouseButton)) {
-			return;
-		}
-		super.mouseClicked(mouseX, mouseY, mouseButton);
 	}
 
 	@Override
-	protected void mouseReleased(int mouseX, int mouseY, int state) {
+	public void mouseUp(int mouseX, int mouseY) {
 		dragging = false;
-
-		if (list.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		if (detailsList.mouseReleased(mouseX, mouseY, state)) {
-			return;
-		}
-		super.mouseReleased(mouseX, mouseY, state);
 	}
 
 	@Override
-	protected void mouseClickMove(int mouseX, int mouseY,
-			int clickedMouseButton, long timeSinceLastClick) {
+	public void mouseDragged(int mouseX, int mouseY) {
 		if (dragging) {
-			bottomLocation = mouseY - dragOffset; 
+			bottomLocation = mouseY - dragOffset;
 		}
 
 		//Clamp bottomLocation.
@@ -399,13 +307,10 @@ public class GuiWDLExtensions extends GuiScreen {
 			bottomLocation = height - MIDDLE_HEIGHT - BOTTOM_HEIGHT - 33;
 		}
 
-		this.list.drawScreen(mouseX, mouseY, partialTicks);
-		this.detailsList.drawScreen(mouseX, mouseY, partialTicks);
+		super.drawScreen(mouseX, mouseY, partialTicks);
 
 		this.drawCenteredString(this.fontRenderer,
 				I18n.format("wdl.gui.extensions.title"), this.width / 2, 8,
 				0xFFFFFF);
-
-		super.drawScreen(mouseX, mouseY, partialTicks);
 	}
 }

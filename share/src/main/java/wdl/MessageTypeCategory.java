@@ -1,7 +1,23 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017-2018 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl;
 
 import net.minecraft.client.resources.I18n;
 import wdl.api.IWDLMessageType;
+import wdl.config.CyclableSetting;
+import wdl.config.settings.MessageSettings;
 
 /**
  * Category / collection of {@link IWDLMessageType}s.
@@ -9,19 +25,29 @@ import wdl.api.IWDLMessageType;
 public abstract class MessageTypeCategory {
 	public MessageTypeCategory(String internalName) {
 		this.internalName = internalName;
+		this.setting = new MessageSettings.MessageCategorySetting(this);
 	}
-	
+
 	/**
 	 * The internal name.
-	 * 
+	 *
 	 * Used when saving.
 	 */
 	public final String internalName;
-	
+	/**
+	 * The setting associated with this category.
+	 */
+	public final CyclableSetting<Boolean> setting;
+
 	/**
 	 * Gets the user-facing display name.
 	 */
 	public abstract String getDisplayName();
+
+	/**
+	 * Gets the user-facing description.
+	 */
+	public abstract String getDescription();
 
 	@Override
 	public String toString() {
@@ -59,43 +85,49 @@ public abstract class MessageTypeCategory {
 		}
 		return true;
 	}
-	
+
 	/**
 	 * Simple {@link MessageTypeCategory} that gets the display name from
 	 * an internationalization key.
 	 */
 	public static class I18nableMessageTypeCategory extends MessageTypeCategory {
-		public final String i18nKey;
-		
+		private final String titleKey;
+		private final String descKey;
+
 		public I18nableMessageTypeCategory(String internalName, String i18nKey) {
 			super(internalName);
-			this.i18nKey = i18nKey;
+			this.titleKey = i18nKey;
+			this.descKey = i18nKey + ".description";
 		}
 
 		@Override
 		public String getDisplayName() {
-			// TODO Auto-generated method stub
-			return I18n.format(i18nKey);
+			return I18n.format(titleKey);
 		}
-		
+
+		@Override
+		public String getDescription() {
+			return I18n.format(descKey);
+		}
+
 	}
-	
+
 	/**
 	 * Core recommended category.
-	 * 
-	 * Put in hear instead of {@link WDLMessageTypes} because of field load
+	 *
+	 * Put in here instead of {@link WDLMessageTypes} because of field load
 	 * orders.
 	 */
-	static final MessageTypeCategory CORE_RECOMMENDED = 
+	static final MessageTypeCategory CORE_RECOMMENDED =
 			new MessageTypeCategory.I18nableMessageTypeCategory("CORE_RECOMMENDED",
 					"wdl.messages.category.core_recommended");
 	/**
 	 * Core recommended category.
-	 * 
-	 * Put in hear instead of {@link WDLMessageTypes} because of field load
+	 *
+	 * Put in here instead of {@link WDLMessageTypes} because of field load
 	 * orders.
 	 */
-	static final MessageTypeCategory CORE_DEBUG = 
+	static final MessageTypeCategory CORE_DEBUG =
 			new MessageTypeCategory.I18nableMessageTypeCategory("CORE_DEBUG",
 					"wdl.messages.category.core_debug");
 }

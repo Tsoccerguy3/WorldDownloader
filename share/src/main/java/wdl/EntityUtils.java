@@ -1,3 +1,17 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017-2018 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl;
 
 import java.util.ArrayList;
@@ -5,28 +19,31 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import javax.annotation.CheckForSigned;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.effect.EntityLightningBolt;
-import net.minecraft.entity.player.EntityPlayer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
+
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityTrackerEntry;
+import net.minecraft.entity.effect.EntityLightningBolt;
+import net.minecraft.entity.player.EntityPlayer;
 import wdl.api.IEntityManager;
 import wdl.api.WDLApi;
 import wdl.api.WDLApi.ModInfo;
-
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
+import wdl.config.settings.EntitySettings;
+import wdl.config.settings.EntitySettings.TrackDistanceMode;
 
 /**
  * Provides utility functions for recognizing entities.
  */
 public class EntityUtils {
-	static final Logger logger = LogManager.getLogger();
+	private static final Logger LOGGER = LogManager.getLogger();
 
 	/**
 	 * Gets a collection of all types of entities, both basic ones and special
@@ -35,7 +52,7 @@ public class EntityUtils {
 	 * This value is calculated each time and is not cached.
 	 */
 	public static Set<String> getEntityTypes() {
-		Set<String> set = new HashSet<String>();
+		Set<String> set = new HashSet<>();
 		for (IEntityManager manager : getEntityManagers()) {
 			for (String type : manager.getProvidedEntities()) {
 				set.add(type);
@@ -48,7 +65,7 @@ public class EntityUtils {
 	 */
 	public static List<IEntityManager> getEntityManagers() {
 		// XXX This order isn't necessarily the one a user would want
-		List<IEntityManager> managers = new ArrayList<IEntityManager>();
+		List<IEntityManager> managers = new ArrayList<>();
 		for (ModInfo<IEntityManager> info : WDLApi.getImplementingExtensions(IEntityManager.class)) {
 			managers.add(info.mod);
 		}
@@ -80,6 +97,7 @@ public class EntityUtils {
 	 * @param entity
 	 * @return
 	 */
+	@CheckForSigned
 	public static int getEntityTrackDistance(@Nonnull Entity entity) {
 		String type = getEntityType(entity);
 		if (type == null) {
@@ -94,6 +112,7 @@ public class EntityUtils {
 	 * @param type
 	 * @return
 	 */
+	@CheckForSigned
 	public static int getEntityTrackDistance(@Nonnull String type) {
 		return getEntityTrackDistance(getTrackDistanceMode(), type, null);
 	}
@@ -106,42 +125,43 @@ public class EntityUtils {
 	 * @param entity
 	 * @return
 	 */
-	public static int getEntityTrackDistance(String mode, @Nonnull String type, @Nullable Entity entity) {
-		if ("default".equals(mode)) {
+	@CheckForSigned
+	public static int getEntityTrackDistance(TrackDistanceMode mode, @Nonnull String type, @Nullable Entity entity) {
+		switch (mode) {
+		case DEFAULT: {
 			for (IEntityManager manager : getEntityManagers()) {
 				if (!manager.getProvidedEntities().contains(type)) {
 					continue;
 				}
 				int distance = manager.getTrackDistance(type, entity);
-				if (distance != -1) {
+				if (distance >= 0) {
 					return distance;
 				}
 			}
-			logger.warn("Failed to get track distance for " + type + " (" + entity + ")");
+			LOGGER.warn("Failed to get track distance for " + type + " (" + entity + ")");
 			return -1;
-		} else if ("server".equals(mode)) {
+		}
+		case SERVER: {
 			int serverDistance = WDLPluginChannels
 					.getEntityRange(type);
 
 			if (serverDistance < 0) {
-				return getEntityTrackDistance("default", type, entity);
+				return getEntityTrackDistance(TrackDistanceMode.DEFAULT, type, entity);
 			}
 
 			return serverDistance;
-		} else if ("user".equals(mode)) {
-			String prop = WDL.worldProps.getProperty("Entity." +
-					type + ".TrackDistance", "-1");
+		} 
+		case USER: {
+			int value = WDL.worldProps.getUserEntityTrackDistance(type);
 
-			int value = Integer.valueOf(prop);
-
-			if (value == -1) {
-				return getEntityTrackDistance("server", type, entity);
+			if (value < 0) {
+				return getEntityTrackDistance(TrackDistanceMode.SERVER, type, entity);
 			} else {
 				return value;
 			}
-		} else {
-			throw new IllegalArgumentException("Mode is not a valid mode: " + mode);
 		}
+		}
+		throw new IllegalArgumentException("Mode is not a valid mode: " + mode);
 	}
 
 	/**
@@ -161,7 +181,7 @@ public class EntityUtils {
 				return group;
 			}
 		}
-		logger.warn("Failed to find entity group for " + identifier);
+		LOGGER.warn("Failed to find entity group for " + identifier);
 		return "Unknown";
 	}
 
@@ -187,10 +207,8 @@ public class EntityUtils {
 	 * @return
 	 */
 	public static boolean isEntityEnabled(@Nonnull String type) {
-		boolean groupEnabled = WDL.worldProps.getProperty("EntityGroup." +
-				getEntityGroup(type) + ".Enabled", "true").equals("true");
-		boolean singleEnabled = WDL.worldProps.getProperty("Entity." +
-				type + ".Enabled", "true").equals("true");
+		boolean groupEnabled = WDL.worldProps.isEntityGroupEnabled(getEntityGroup(type));
+		boolean singleEnabled = WDL.worldProps.isEntityTypeEnabled(type);
 
 		return groupEnabled && singleEnabled;
 	}
@@ -209,7 +227,7 @@ public class EntityUtils {
 			return null;
 		}
 		if (e == null) {
-			logger.warn("Can't get type for null entity", new Exception());
+			LOGGER.warn("Can't get type for null entity", new Exception());
 			return null;
 		}
 
@@ -219,14 +237,14 @@ public class EntityUtils {
 				return type;
 			}
 		}
-		logger.warn("Failed to classify entity " + e);
+		LOGGER.warn("Failed to classify entity " + e);
 		return null;
 	}
 	/**
 	 * Gets the currently selected track distance mode from {@link WDL#worldProps}.
 	 */
-	public static String getTrackDistanceMode() {
-		return WDL.worldProps.getProperty("Entity.TrackDistanceMode", "server");
+	public static TrackDistanceMode getTrackDistanceMode() {
+		return WDL.worldProps.getValue(EntitySettings.TRACK_DISTANCE_MODE);
 	}
 
 	/**
@@ -244,7 +262,7 @@ public class EntityUtils {
 				return displayIdentifier;
 			}
 		}
-		logger.debug("Failed to get display name for " + identifier);
+		LOGGER.debug("Failed to get display name for " + identifier);
 		return identifier;
 	}
 	/**
@@ -259,8 +277,50 @@ public class EntityUtils {
 				return displayGroup;
 			}
 		}
-		logger.debug("Failed to get display name for group " + group);
+		LOGGER.debug("Failed to get display name for group " + group);
 		return group;
+	}
+
+	/**
+	 * Checks if an entity should be saved, after it was removed clientside. An
+	 * entity is untracked in two cases: when it dies, and when it moves too far
+	 * away from the player. We only want to save the entity in the latter case. The
+	 * case can be determined by the distance.
+	 *
+	 * Note that the distance case is <em>not</em> related to rendering; generally
+	 * the client knows about entities slightly further away than it renders them,
+	 * and entities are not untracked for vertical distance differences but only x/z
+	 * differences (and in fact, it isn't a spherical or circular distance, but
+	 * instead a square one).
+	 *
+	 * @param entity        The entity to test with.
+	 * @param player        The player (used for position checks).
+	 * @param trackDistance The track distance for the entity, probably from
+	 *                      {@link #getEntityTrackDistance(Entity)}.
+	 * @param viewDistance  The server's view-distance value, in chunks.
+	 * @return True if the entity should be saved, false if it should be removed.
+	 * @see EntityTrackerEntry#isVisibleTo EntityTrackerEntry.isVisibleTo (source of
+	 *      this logic)
+	 */
+	public static boolean isWithinSavingDistance(Entity entity, Entity player,
+			int trackDistance, int viewDistance) {
+		// Ref EntityTracker.setViewDistance and PlayerList.getFurthestViewableBlock
+		// (note that PlayerChunkMap.getFurthestViewableBlock is a misleading name)
+		int maxRange = (viewDistance - 1) * 16;
+
+		int threshold = Math.min(trackDistance, maxRange);
+
+		// Entity track distance is a square, see EntityTrackerEntry.isVisibleTo
+		double dx = Math.abs(entity.posX - player.posX);
+		double dz = Math.abs(entity.posZ - player.posZ);
+
+		double distance = Math.max(dx, dz);
+
+		LOGGER.info("removeEntity: {} is at distance {} from {} (dx {}, dz {}); configured track distance is {}"
+				+ " and server distance for view distance {} is {}.  Entity kept: {}",
+				entity, distance, player, dx, dz, trackDistance, viewDistance, maxRange, (distance > threshold));
+
+		return distance > threshold;
 	}
 
 	/**

@@ -1,6 +1,27 @@
+/*
+ * This file is part of World Downloader: A mod to make backups of your
+ * multiplayer worlds.
+ * http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/2520465
+ *
+ * Copyright (c) 2014 nairol, cubic72
+ * Copyright (c) 2017 Pokechu22, julialy
+ *
+ * This project is licensed under the MMPLv2.  The full text of the MMPL can be
+ * found in LICENSE.md, or online at https://github.com/iopleke/MMPLv2/blob/master/LICENSE.md
+ * For information about this the MMPLv2, see http://stopmodreposts.org/
+ *
+ * Do not redistribute (in modified or unmodified form) without prior permission.
+ */
 package wdl;
 
 import java.lang.reflect.Field;
+import java.util.Map;
+
+import net.minecraft.client.gui.inventory.GuiContainerCreative;
+import net.minecraft.inventory.Container;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Maps;
 
 /**
  * Reflection utilities, mainly to work with private fields.
@@ -17,6 +38,13 @@ import java.lang.reflect.Field;
 public class ReflectionUtils {
 
 	/**
+	 * A mapping of containing classes to mappings of field types to fields, used
+	 * to (slightly) boost performance.
+	 */
+	@VisibleForTesting
+	static final Map<Class<?>, Map<Class<?>, Field>> CACHE = Maps.newHashMap();
+
+	/**
 	 * Uses Java's reflection API to find an inaccessible field of the given
 	 * type in the given class.
 	 * <p>
@@ -30,26 +58,40 @@ public class ReflectionUtils {
 	 * @return The field, with {@link Field#setAccessible(boolean)} already called
 	 */
 	public static Field findField(Class<?> typeOfClass, Class<?> typeOfField) {
+		if (CACHE.containsKey(typeOfClass)) {
+			Map<Class<?>, Field> fields = CACHE.get(typeOfClass);
+			if (fields.containsKey(typeOfField)) {
+				return fields.get(typeOfField);
+			}
+		}
+
 		Field[] fields = typeOfClass.getDeclaredFields();
 
 		for (Field f : fields) {
 			if (f.getType().equals(typeOfField)) {
 				try {
 					f.setAccessible(true);
+
+					if (!CACHE.containsKey(typeOfClass)) {
+						CACHE.put(typeOfClass, Maps.<Class<?>, Field>newHashMap());
+					}
+
+					CACHE.get(typeOfClass).put(typeOfField, f);
+
 					return f;
 				} catch (Exception e) {
 					throw new RuntimeException(
-						"WorldDownloader: Couldn't get private Field of type \""
-						+ typeOfField + "\" from class \"" + typeOfClass
-						+ "\" !", e);
+							"WorldDownloader: Couldn't get private Field of type \""
+									+ typeOfField + "\" from class \"" + typeOfClass
+									+ "\" !", e);
 				}
 			}
 		}
 
 		throw new RuntimeException(
-			"WorldDownloader: Couldn't find any Field of type \""
-			+ typeOfField + "\" from class \"" + typeOfClass
-			+ "\" !");
+				"WorldDownloader: Couldn't find any Field of type \""
+						+ typeOfField + "\" from class \"" + typeOfClass
+						+ "\" !");
 	}
 
 	/**
@@ -77,9 +119,9 @@ public class ReflectionUtils {
 			return typeOfField.cast(f.get(object));
 		} catch (Exception e) {
 			throw new RuntimeException(
-				"WorldDownloader: Couldn't get Field of type \""
-				+ typeOfField + "\" from object \"" + object
-				+ "\" !", e);
+					"WorldDownloader: Couldn't get Field of type \""
+							+ typeOfField + "\" from object \"" + object
+							+ "\" !", e);
 		}
 	}
 
@@ -110,9 +152,9 @@ public class ReflectionUtils {
 			f.set(object, value);
 		} catch (Exception e) {
 			throw new RuntimeException(
-				"WorldDownloader: Couldn't set Field of type \""
-				+ typeOfField + "\" from object \"" + object
-				+ "\" to " + value + "!", e);
+					"WorldDownloader: Couldn't set Field of type \""
+							+ typeOfField + "\" from object \"" + object
+							+ "\" to " + value + "!", e);
 		}
 	}
 
@@ -136,9 +178,9 @@ public class ReflectionUtils {
 			return typeOfField.cast(f.get(object));
 		} catch (Exception e) {
 			throw new RuntimeException(
-				"WorldDownloader: Couldn't get Field of type \""
-				+ typeOfField + "\" from object \"" + object
-				+ "\" !", e);
+					"WorldDownloader: Couldn't get Field of type \""
+							+ typeOfField + "\" from object \"" + object
+							+ "\" !", e);
 		}
 	}
 
@@ -163,9 +205,35 @@ public class ReflectionUtils {
 			f.set(object, value);
 		} catch (Exception e) {
 			throw new RuntimeException(
-				"WorldDownloader: Couldn't set Field of type \""
-				+ typeOfField + "\" from object \"" + object
-				+ "\" to " + value + "!", e);
+					"WorldDownloader: Couldn't set Field of type \""
+							+ typeOfField + "\" from object \"" + object
+							+ "\" to " + value + "!", e);
+		}
+	}
+
+	/**
+	 * Checks if the given class is
+	 * {@link GuiContainerCreative.ContainerCreative}. In 1.12, this class is
+	 * public, but in older versions (e.g. 1.10) it isn't.
+	 * <p>
+	 * Note that this implementation checks whether it's an inner class of
+	 * {@link GuiContainerCreative}. This implementation works fine for versions
+	 * with <code>InnerClasses</code> data, but older versions of Minecraft
+	 * (1.8, but not 1.8.9) do not contain this data.  If 1.8 is eventually supported,
+	 * this method will not work for it.
+	 *
+	 * @param containerClass
+	 *            The class to check
+	 */
+	public static boolean isCreativeContainer(Class<? extends Container> containerClass) {
+		try {
+			return GuiContainerCreative.class.equals(containerClass.getEnclosingClass());
+		} catch (Exception e) {
+			// This one really should never happen (unless maybe an
+			// external mod does some stupid security manager stuff)
+			throw new RuntimeException(
+					"WorldDownloader: Couldn't check if \""
+							+ containerClass + "\" was the creative inventory!", e);
 		}
 	}
 

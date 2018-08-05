@@ -20,36 +20,58 @@ buildscript {
         classpath 'net.minecraftforge.gradle:ForgeGradle:2.2-SNAPSHOT'
         classpath 'commons-io:commons-io:2.5'
         classpath 'com.googlecode.java-diff-utils:diffutils:1.3.0'
-        classpath 'pokechu22.test.begradle:begradle:0.1.0@jar'
-        classpath 'org.spongepowered:mixingradle:0.4-SNAPSHOT'
+        classpath 'pokechu22.test.begradle:begradle:0.1.4-SNAPSHOT@jar'
+        classpath 'org.spongepowered:mixingradle:0.6-SNAPSHOT'
     }
 }
 
 apply plugin: 'java'
 
-version = "4.0.0.6-SNAPSHOT"
+version = "4.0.2.1-SNAPSHOT"
 group = "wdl"
 archivesBaseName = "LiteModWDL"
-libsDirName = "../../libs"
+libsDirName = "../../libs/${version}"
 
 apply plugin: 'net.minecraftforge.gradle.liteloader'
 apply plugin: 'pokechu22.test.customsrg'
 apply plugin: 'org.spongepowered.mixin'
+apply plugin: 'pokechu22.test.noinplacereobf'
+
+repositories {
+    maven {
+        name = 'sponge'
+        url = 'http://repo.spongepowered.org/maven'
+    }
+}
+
+dependencies {
+    testCompile 'junit:junit:4.12'
+    testCompile 'org.hamcrest:hamcrest-library:1.3'
+    testCompile 'org.mockito:mockito-core:2.8.47'
+    testCompile 'org.spongepowered:lwts:1.0.0'
+    // Make sure that we have the Minecraft deps, at the correct versions
+    testCompile configurations.forgeGradleMcDeps
+}
 
 minecraft {
     version = "1.11.2"
-    mappings = "snapshot_20170707"
+    mappings = "snapshot_20180719"
     runDir = "run"
+
+    // We don't currently want a source jar (doesn't work well for base edits, and the version info doesn't work yet)
+    makeObfSourceJar = false
 }
 
 extraSrgs {
-    add file('../srgs/AbstractHorseToEquineEntity.srg')
+    addSrg file('../srgs/AbstractHorseToEquineEntity.srg')
+    addSrg file('../srgs/1.13.srg')
+    addMethods file('../srgs/1.11_gui_methods.csv')
+    addPatch('net.minecraft.entity.passive.EquineEntity.java', file('../srgs/EE_1.11.x.patch'))
 }
 
 sourceSets {
     main {
         java {
-            srcDir "src/main/java"
             srcDir project(':1.11.2').file("src/main/java")
             srcDir project(':share').file("src/main/java")
         }
@@ -57,9 +79,46 @@ sourceSets {
             srcDir "src/main/resources"
             srcDir project(':share').file("src/main/resources")
         }
-        // Refmap declaration must match the refmap name specified in the json config
-        refMap = "mixins.LiteModWDL.refmap.json"
     }
+    mixin {
+        java {
+            srcDir "src/java6/java"
+            compileClasspath += sourceSets.main.output
+            compileClasspath += sourceSets.main.compileClasspath
+            runtimeClasspath += sourceSets.main.output
+            runtimeClasspath += sourceSets.main.runtimeClasspath
+        }
+        // Refmap declaration must match the refmap name specified in the json config
+        ext.refMap = "mixins.LiteModWDL.refmap.json"
+    }
+    test {
+        java {
+            compileClasspath += sourceSets.mixin.output
+            runtimeClasspath += sourceSets.mixin.output
+            srcDir "src/test/java"
+            srcDir project(':share').file("src/test/java")
+        }
+    }
+    api {
+        java {
+            srcDir project(':share').file("src/api/java")
+        }
+    }
+}
+
+// We want Java 8 where possible
+tasks.withType(JavaCompile) { javaTask ->
+    javaTask.sourceCompatibility = "1.8"
+    javaTask.targetCompatibility = "1.8"
+}
+
+sourceCompatibility = "1.8"
+targetCompatibility = "1.8"
+
+// Mixins need to be in Java 6 for this version of MC
+compileMixinJava {
+    sourceCompatibility = "1.6"
+    targetCompatibility = "1.6"
 }
 
 mixin {
@@ -77,17 +136,21 @@ litemod {
     }
 }
 
-jar {
-    from litemod.outputs
-}
-
 // Use tabs instead of spaces
 fixMcSources {
     astyleConfig = "../astyle.cfg"
-    // TEMPORARY, until I can figure out an automatic patch system.
-    doFirst {
-        def field = net.minecraftforge.gradle.tasks.PostDecompileTask.class.getDeclaredField('patchesMap')
-        field.accessible = true
-        field.get(fixMcSources).put('net.minecraft.entity.passive.EquineEntity.java', file('../srgs/EE_1.11.x.patch'))
-    }
+}
+
+// Ensure that the API code, Java 6 mixin code, and litemod JSON are in the jar
+jar {
+    from sourceSets.mixin.output
+    from sourceSets.api.output
+    from litemod.outputs
+}
+
+test {
+    systemProperty 'lwts.tweaker', 'wdl.lwts.WDLTestTweaker'
+
+    // Run tests in a temporary directory
+    workingDir = { test.temporaryDir }
 }
